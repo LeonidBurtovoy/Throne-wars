@@ -450,6 +450,18 @@ function drawDirewolfBeast(ctx, faction, anim) {
   ctx.fill();
   ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 0.6;
   for (const yy of [-1.2, 0.4, 2]) { ctx.beginPath(); ctx.moveTo(-4.8, yy); ctx.lineTo(3.6, yy - 0.6); ctx.stroke(); }
+  // shaggy fur tufts along the spine, breaking up the smooth gradient fill
+  ctx.strokeStyle = 'rgba(20,18,15,0.4)'; ctx.lineWidth = 0.8; ctx.lineCap = 'round';
+  for (let i = 0; i < 6; i++) {
+    const fx = 5.5 - i * 2.3;
+    const t = Math.max(-0.95, Math.min(0.95, fx / 8));
+    const topY = 1 - 3.6 * Math.sqrt(1 - t * t);
+    ctx.beginPath(); ctx.moveTo(fx, topY + 0.8); ctx.lineTo(fx - 0.4, topY - 0.6); ctx.stroke();
+  }
+  // thin frost-pale rim light along the back — separates the silhouette
+  // from a dark background and reads as light catching the fur
+  ctx.strokeStyle = 'rgba(220,230,235,0.35)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.ellipse(0, 1, 8, 3.6, 0, Math.PI * 1.15, Math.PI * 1.75); ctx.stroke();
 
   // neck bridges the gap between body and head so the head doesn't look
   // bolted on separately
@@ -457,6 +469,18 @@ function drawDirewolfBeast(ctx, faction, anim) {
   ctx.beginPath();
   ctx.moveTo(4.8, -1.6); ctx.lineTo(7.6, -4.2); ctx.lineTo(6.4, 0.6); ctx.lineTo(4.4, 1.4);
   ctx.closePath(); ctx.fill();
+  // fur ruff around the neck/shoulders — a jagged tuft collar, thicker
+  // fur that real wolves (and heraldic direwolves) carry at the neck
+  ctx.fillStyle = darkenColor('#6b6a62', 0.05);
+  for (let i = 0; i < 5; i++) {
+    const a = 4.6 + i * 0.55;
+    ctx.beginPath();
+    ctx.moveTo(a, -2 + i * 0.15);
+    ctx.lineTo(a + 0.9, -3.4 + i * 0.2);
+    ctx.lineTo(a + 1.5, -1.6 + i * 0.15);
+    ctx.closePath();
+    ctx.fill();
+  }
 
   // head lunges forward and down when attacking, otherwise bobs with the stride
   const lunge = attackT !== null ? Math.sin(attackT * Math.PI) * 2.4 : 0;
@@ -527,6 +551,12 @@ function drawDragonBeast(ctx, faction, anim) {
     ctx.closePath();
     ctx.fill();
     ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.lineWidth = 0.6; ctx.stroke();
+    // membrane veins radiating from the wing root — the single biggest cue
+    // that reads as "leathery bat/dragon wing" rather than a flat fill
+    ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 0.5;
+    for (const [vx, vy] of [[7.5, -6.5], [9.5, -3], [7, 1.5]]) {
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(vx, vy); ctx.stroke();
+    }
     ctx.restore();
   }
 
@@ -552,6 +582,10 @@ function drawDragonBeast(ctx, faction, anim) {
   for (let i = 0; i < 3; i++) {
     ctx.beginPath(); ctx.arc(-1 + i * 2.4, 0.5, 3.2 - i * 0.3, -0.6, 0.6); ctx.stroke();
   }
+  // thin rim light along the back — separates the silhouette from a dark
+  // background and reads as light catching the scales
+  ctx.strokeStyle = 'rgba(255,220,190,0.25)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.ellipse(-1, 0.5, 7.5, 3.6, 0, Math.PI * 1.1, Math.PI * 1.7); ctx.stroke();
   // spine ridge spikes — follow the body ellipse's actual top curve so they
   // sit flush on the back for the full length from shoulder to tail base,
   // tapering shorter toward each end instead of a short row floating over
@@ -592,6 +626,19 @@ function drawDragonBeast(ctx, faction, anim) {
   ctx.strokeStyle = '#2a2420'; ctx.lineWidth = 1; ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(-1, -1.2); ctx.lineTo(-2.6, -3); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(0.2, -1.6); ctx.lineTo(-0.8, -3.4); ctx.stroke();
+  // small chin spikes along the lower jaw — a frill instead of a smooth edge
+  ctx.fillStyle = darkenColor(faction.colorPrimary, 0.25);
+  for (let i = 0; i < 3; i++) {
+    const jx = 2 - i * 1.3, jy = 1.5;
+    ctx.beginPath(); ctx.moveTo(jx, jy); ctx.lineTo(jx - 0.3, jy + 1); ctx.lineTo(jx + 0.5, jy + 0.3); ctx.closePath(); ctx.fill();
+  }
+  // nostril
+  ctx.fillStyle = '#1a1210';
+  ctx.beginPath(); ctx.ellipse(3.2, -0.7, 0.35, 0.25, 0.4, 0, Math.PI * 2); ctx.fill();
+  // fangs top and bottom, flanking the open jaw
+  ctx.fillStyle = '#f0ece0';
+  ctx.beginPath(); ctx.moveTo(3.6, -0.1); ctx.lineTo(4.1, 0.9); ctx.lineTo(3.1, 0.3); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(3.5, 1.1); ctx.lineTo(4, 0.2); ctx.lineTo(2.9, 0.7); ctx.closePath(); ctx.fill();
   // ember glow in the open jaw — this beast is ready to breathe fire
   flame(ctx, 4, 0.2, 0.55, anim.walkPhase * 10, 3);
   const eyeGlow = 0.6 + 0.4 * Math.max(0, Math.sin(walkPhase * Math.PI * 3));
