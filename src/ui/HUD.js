@@ -1,7 +1,7 @@
 import { FACTIONS, BUILDING_STATS, UNIT_STATS } from '../data/factions.js';
-import { TILE, TILE_TYPE } from '../config.js';
+import { TILE, TILE_TYPE, TRADE_BATCH, TRADE_BASE_RATE } from '../config.js';
 import { canAfford, hasFoodRoom } from '../systems/Economy.js';
-import { upgradesForBuilding, getAttackBonus, getArmorBonus } from '../data/upgrades.js';
+import { upgradesForBuilding, getAttackBonus, getArmorBonus, getHealAmountBonus, getTradeRate } from '../data/upgrades.js';
 import { getUnitIcon, getBuildingIcon } from '../data/sprites.js';
 
 const el = (id) => document.getElementById(id);
@@ -12,9 +12,14 @@ export function displayName(entity, ownFaction) {
   return faction.buildingNames[entity.type];
 }
 
+export function displayDescription(entity) {
+  return entity.kind === 'unit' ? UNIT_STATS[entity.role].description : BUILDING_STATS[entity.type].description;
+}
+
 export function updateResourceBar(player) {
   el('res-gold').textContent = Math.floor(player.gold);
   el('res-wood').textContent = Math.floor(player.wood);
+  el('res-steel').textContent = Math.floor(player.steel);
   el('res-food').textContent = `${player.foodUsed}/${player.foodCap}`;
 }
 
@@ -35,6 +40,7 @@ function costLabel(cost) {
   const parts = [];
   if (cost.gold) parts.push(`${cost.gold}з`);
   if (cost.wood) parts.push(`${cost.wood}д`);
+  if (cost.steel) parts.push(`${cost.steel}с`);
   return parts.join(' ');
 }
 
@@ -46,11 +52,14 @@ function statSpan(label, base, bonus) {
 function statsHTML(entity) {
   const hpLine = `<span>❤ ${Math.ceil(entity.hp)}/${entity.maxHp}</span>`;
   if (entity.kind === 'unit') {
-    const atkBonus = getAttackBonus(entity);
-    const armBonus = getArmorBonus(entity);
     const stats = entity.stats;
-    const parts = [hpLine, statSpan('⚔', stats.attack, atkBonus), statSpan('🛡', entity.armor, armBonus)];
+    const parts = [hpLine];
+    if (stats.attack) {
+      parts.push(statSpan('⚔', stats.attack, getAttackBonus(entity)));
+      parts.push(statSpan('🛡', entity.armor, getArmorBonus(entity)));
+    }
     if (stats.speed) parts.push(`<span>⚡ ${stats.speed}</span>`);
+    if (stats.healAmount) parts.push(statSpan('✚', stats.healAmount, getHealAmountBonus(entity)));
     if (entity.carrying) parts.push(`<span>${entity.carrying.type === 'gold' ? '🪙' : '🪵'} ${entity.carrying.amount}</span>`);
     return parts.join('');
   }
@@ -70,10 +79,12 @@ export function updateSelectionPanel(game) {
 
   if (sel.length === 0) {
     nameEl.textContent = '-';
+    nameEl.title = '';
     hpFill.style.width = '100%';
     hpFill.style.background = '#3ab03a';
     portrait.style.background = '#26221a';
     portrait.style.backgroundImage = 'none';
+    portrait.title = '';
     el('selection-stats').innerHTML = '';
     return;
   }
@@ -88,14 +99,19 @@ export function updateSelectionPanel(game) {
       ? getUnitIcon(first.role, faction, first.faction)
       : getBuildingIcon(first.type, faction, first.faction);
     portrait.style.backgroundImage = `url(${iconUrl})`;
+    const desc = displayDescription(first);
     nameEl.textContent = displayName(first, game.playerFaction);
+    nameEl.title = desc;
+    portrait.title = desc;
     const pct = Math.max(0, (first.hp / first.maxHp) * 100);
     hpFill.style.width = pct + '%';
     hpFill.style.background = pct > 50 ? '#3ab03a' : pct > 25 ? '#c0a030' : '#b03a3a';
     statsEl.innerHTML = statsHTML(first);
   } else {
     portrait.style.backgroundImage = 'none';
+    portrait.title = '';
     nameEl.textContent = `Выбрано отряд: ${sel.length}`;
+    nameEl.title = '';
     hpFill.style.width = '100%';
     hpFill.style.background = '#3ab03a';
     statsEl.innerHTML = '';
@@ -106,10 +122,11 @@ export function updateSelectionPanel(game) {
   const allOwnWorkers = sel.every((e) => e.kind === 'unit' && e.owner === game.localOwner && e.role === 'worker');
   const allOwnUnits = sel.every((e) => e.kind === 'unit' && e.owner === game.localOwner);
 
-  const addButton = (label, cost, disabled, onClick, iconUrl) => {
+  const addButton = (label, cost, disabled, onClick, iconUrl, tooltip) => {
     const btn = document.createElement('button');
     btn.className = 'cmd-btn';
     btn.disabled = !!disabled;
+    if (tooltip) btn.title = tooltip;
     const icon = iconUrl ? `<img class="cmd-icon" src="${iconUrl}" alt="" />` : '';
     btn.innerHTML = `${icon}<span>${label}</span>${cost ? `<span class="cost">${costLabel(cost)}</span>` : ''}`;
     btn.onclick = onClick;
@@ -117,52 +134,54 @@ export function updateSelectionPanel(game) {
   };
 
   if (isSingleBuilding) {
+    // No full-width "label row" dividers here on purpose — every one of
+    // those used to force its own row in the button grid (a grid row never
+    // shrinks below its minimum height even for a one-line label), which
+    // was enough extra rows to push the upgrade buttons below the fixed-
+    // height HUD bar and off-screen. Everything is a plain button now, so
+    // it packs into as few rows as the grid's column count allows.
     const trains = first.stats.trains;
     if (trains && first.complete) {
       for (const role of trains) {
         const stats = UNIT_STATS[role];
-        const name = faction.unitNames[role];
-        const disabled = !canAfford(player, stats.cost) || !hasFoodRoom(player, stats.food) || first.trainQueue.length >= 5;
+        const queued = first.trainQueue.length;
+        const name = faction.unitNames[role] + (queued > 0 ? ` (${queued})` : '');
+        const disabled = !canAfford(player, stats.cost) || !hasFoodRoom(player, stats.food) || queued >= 5;
         addButton(name, stats.cost, disabled, () => {
           game.trainUnit(first, role);
           updateSelectionPanel(game);
-        }, getUnitIcon(role, faction, first.faction));
+        }, getUnitIcon(role, faction, first.faction), stats.description);
       }
-    }
-    if (first.trainQueue.length > 0) {
-      const info = document.createElement('div');
-      info.style.gridColumn = '1 / -1';
-      info.style.fontSize = '0.75em';
-      info.style.color = '#b8a878';
-      info.textContent = `В очереди: ${first.trainQueue.length}`;
-      buttonsEl.appendChild(info);
     }
     const upgrades = first.complete ? upgradesForBuilding(first.type) : [];
-    if (upgrades.length > 0) {
-      const sep = document.createElement('div');
-      sep.style.gridColumn = '1 / -1';
-      sep.style.fontSize = '0.72em';
-      sep.style.color = '#8a7a52';
-      sep.style.marginTop = '2px';
-      sep.textContent = 'Улучшения:';
-      buttonsEl.appendChild(sep);
-      for (const [key, def] of upgrades) {
-        const done = player.upgrades[key];
-        const inProgress = first.researching && first.researching.key === key;
-        const disabled = done || !!first.researching || !canAfford(player, def.cost);
-        const label = done ? `✓ ${def.name}` : inProgress ? `${def.name}…` : def.name;
-        addButton(label, done ? null : def.cost, disabled, () => {
-          game.startResearch(first, key);
-          updateSelectionPanel(game);
-        });
-      }
+    for (const [key, def] of upgrades) {
+      const done = player.upgrades[key];
+      const inProgress = first.researching && first.researching.key === key;
+      const disabled = done || !!first.researching || !canAfford(player, def.cost);
+      const label = done ? `✓ ${def.name}` : inProgress ? `${def.name}…` : def.name;
+      addButton(label, done ? null : def.cost, disabled, () => {
+        game.startResearch(first, key);
+        updateSelectionPanel(game);
+      }, null, def.description);
+    }
+    if (first.type === 'market' && first.complete) {
+      const rate = TRADE_BASE_RATE + getTradeRate(player);
+      const gain = Math.round(TRADE_BATCH * rate);
+      addButton(`Дерево → Золото (${gain})`, { wood: TRADE_BATCH }, player.wood < TRADE_BATCH, () => {
+        game.tradeResources(first, 'wood');
+        updateSelectionPanel(game);
+      }, null, `Обменять ${TRADE_BATCH} дерева на ${gain} золота.`);
+      addButton(`Золото → Дерево (${gain})`, { gold: TRADE_BATCH }, player.gold < TRADE_BATCH, () => {
+        game.tradeResources(first, 'gold');
+        updateSelectionPanel(game);
+      }, null, `Обменять ${TRADE_BATCH} золота на ${gain} дерева.`);
     }
   } else if (allOwnWorkers) {
-    for (const type of ['farm', 'barracks', 'archery', 'stable', 'tower', 'forge', 'workshop']) {
+    for (const type of ['farm', 'barracks', 'archery', 'stable', 'tower', 'forge', 'workshop', 'temple', 'market']) {
       const stats = BUILDING_STATS[type];
       const name = faction.buildingNames[type];
       const disabled = !canAfford(player, stats.cost);
-      addButton(name, stats.cost, disabled, () => game.enterBuildPlacement(type), getBuildingIcon(type, faction, first.faction));
+      addButton(name, stats.cost, disabled, () => game.enterBuildPlacement(type), getBuildingIcon(type, faction, first.faction), stats.description);
     }
     addButton('Стоп', null, false, () => game.stopSelection());
   } else if (allOwnUnits) {
@@ -204,6 +223,7 @@ const TERRAIN_COLORS = {
   [TILE_TYPE.WATER]: '#1a2a4a',
   [TILE_TYPE.ROCK]: '#3a3630',
   [TILE_TYPE.GOLD]: '#8a7020',
+  [TILE_TYPE.STEEL]: '#6a92a8',
 };
 
 export function drawMinimap(game, force = false) {

@@ -114,6 +114,7 @@
   <div id="topbar">
     <div class="resource"><span class="icon icon-gold"></span><span id="res-gold">0</span></div>
     <div class="resource"><span class="icon icon-wood"></span><span id="res-wood">0</span></div>
+    <div class="resource" title="Валирийская сталь — редкий ресурс, нужен только для улучшений"><span class="icon icon-steel"></span><span id="res-steel">0</span></div>
     <div class="resource"><span class="icon icon-food"></span><span id="res-food">0/0</span></div>
     <div id="game-clock">00:00</div>
     <div id="message-log"></div>
@@ -121,15 +122,18 @@
 
   <canvas id="game-canvas"></canvas>
 
-  <canvas id="minimap-canvas" width="180" height="180"></canvas>
+  <div id="bottom-hud">
+    <canvas id="minimap-canvas" width="150" height="150"></canvas>
 
-  <div id="selection-panel">
-    <div id="selection-portrait"></div>
-    <div id="selection-info">
-      <div id="selection-name">-</div>
-      <div id="selection-hp-bar"><div id="selection-hp-fill"></div></div>
-      <div id="selection-stats"></div>
+    <div id="selection-panel">
+      <div id="selection-portrait"></div>
+      <div id="selection-info">
+        <div id="selection-name">-</div>
+        <div id="selection-hp-bar"><div id="selection-hp-fill"></div></div>
+        <div id="selection-stats"></div>
+      </div>
     </div>
+
     <div id="command-buttons"></div>
   </div>
 

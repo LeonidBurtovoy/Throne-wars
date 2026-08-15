@@ -1,4 +1,4 @@
-import { VIEWPORT } from './config.js';
+import { VIEWPORT, BOTTOM_HUD_HEIGHT } from './config.js';
 import { generateMap } from './map/mapData.js';
 import { Game } from './engine/Game.js';
 import { InputHandler } from './engine/Input.js';
@@ -7,7 +7,6 @@ import { hostRoom, joinRoom, makeLink } from './net/PeerLink.js';
 import { NetworkHost } from './net/NetworkHost.js';
 import { NetworkGuest } from './net/NetworkGuest.js';
 
-const TOPBAR_HEIGHT = 40;
 const SCREENS = ['menu-screen', 'net-screen', 'game-screen'];
 
 function reportFatal(title, err) {
@@ -192,11 +191,12 @@ function prepareCanvas() {
   canvas.height = VIEWPORT.height;
   canvas.style.width = VIEWPORT.width + 'px';
   canvas.style.height = VIEWPORT.height + 'px';
-  // keep the game screen's box exactly the size of the playfield so every
-  // panel anchored to its edges lines up with the canvas, not the browser window
+  // size the game screen to exactly canvas + bottom HUD bar (stacked in
+  // normal flow — see style.css) so nothing overlaps the map view; the
+  // topbar overlays the canvas's own top edge and adds no extra height
   const gameScreen = requireEl('game-screen');
   gameScreen.style.width = VIEWPORT.width + 'px';
-  gameScreen.style.height = (VIEWPORT.height + TOPBAR_HEIGHT) + 'px';
+  gameScreen.style.height = (VIEWPORT.height + BOTTOM_HUD_HEIGHT) + 'px';
   return canvas;
 }
 

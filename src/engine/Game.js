@@ -1,6 +1,6 @@
-import { TILE, TILE_TYPE, START_GOLD, START_WOOD, START_FOOD_CAP, FARM_FOOD } from '../config.js';
+import { TILE, TILE_TYPE, START_GOLD, START_WOOD, START_STEEL, START_FOOD_CAP, FARM_FOOD, TRADE_BATCH, TRADE_BASE_RATE } from '../config.js';
 import { FACTIONS, UNIT_STATS, BUILDING_STATS, opponentOf } from '../data/factions.js';
-import { drawUnit, drawBuilding, drawGoldNode, drawTree, drawTerrainDetail } from '../data/sprites.js';
+import { drawUnit, drawBuilding, drawGoldNode, drawSteelNode, drawTree, drawTerrainDetail, blendTerrainEdges } from '../data/sprites.js';
 import { Unit } from '../entities/Unit.js';
 import { Building } from '../entities/Building.js';
 import { Camera } from './Camera.js';
@@ -11,9 +11,11 @@ import * as Selection from '../systems/Selection.js';
 import { separateUnits } from '../systems/Movement.js';
 import { AIController } from '../systems/AI.js';
 import * as HUD from '../ui/HUD.js';
-import { UPGRADES, createDefaultUpgrades } from '../data/upgrades.js';
+import { UPGRADES, createDefaultUpgrades, getTradeRate } from '../data/upgrades.js';
 
 const STARTING_WORKERS = 4;
+const DEATH_FADE_DURATION = 0.5; // seconds a fallen unit lingers, fading out
+const IMPACT_EFFECT_DURATION = 0.25; // seconds a hit-burst is visible
 
 function formationOffset(i) {
   if (i === 0) return [0, 0];
@@ -40,6 +42,7 @@ export class Game {
     this.units = [];
     this.buildings = [];
     this.projectiles = [];
+    this.effects = []; // transient combat-hit visuals, see spawnImpactEffect
     this.selection = [];
 
     this.localOwner = localOwner;
@@ -55,10 +58,10 @@ export class Game {
     // alternate opponent houses for visual variety when there's more than one
     const factionForOwner = (i) => (i % 2 === 1 ? opponentOf(playerFaction) : playerFaction);
 
-    this.players = [{ id: 0, faction: playerFaction, gold: START_GOLD, wood: START_WOOD, foodCap: START_FOOD_CAP, foodUsed: 0, upgrades: createDefaultUpgrades() }];
+    this.players = [{ id: 0, faction: playerFaction, gold: START_GOLD, wood: START_WOOD, steel: START_STEEL, foodCap: START_FOOD_CAP, foodUsed: 0, upgrades: createDefaultUpgrades() }];
     for (const o of this.allOwners) {
       if (o === 0) continue;
-      this.players[o] = { id: o, faction: factionForOwner(o), gold: START_GOLD, wood: START_WOOD, foodCap: START_FOOD_CAP, foodUsed: 0, upgrades: createDefaultUpgrades() };
+      this.players[o] = { id: o, faction: factionForOwner(o), gold: START_GOLD, wood: START_WOOD, steel: START_STEEL, foodCap: START_FOOD_CAP, foodUsed: 0, upgrades: createDefaultUpgrades() };
     }
 
     this.aiControllers = this.aiOwners.map((o) => new AIController(o));
@@ -108,6 +111,7 @@ export class Game {
 
   // ---------------- combat/economy delegation ----------------
   performAttack(attacker, target, opts) { Combat.performAttack(this, attacker, target, opts); }
+  performHeal(healer, target) { Combat.performHeal(this, healer, target); }
   applyDamageTo(target, dmg, attackerOwner) { Combat.applyDamageTo(this, target, dmg, attackerOwner); }
   dealSplashDamage(owner, x, y, r, dmg) { Combat.dealSplashDamage(this, owner, x, y, r, dmg); }
   getUnitsAndBuildingsForOwner(owner) { return Combat.getUnitsAndBuildingsForOwner(this, owner); }
@@ -120,7 +124,7 @@ export class Game {
       const [xs, ys] = key.split(',');
       const x = +xs, y = +ys;
       const tile = this.map.getTile(x, y);
-      const tileType = tile === TILE_TYPE.GOLD ? 'gold' : tile === TILE_TYPE.FOREST ? 'wood' : null;
+      const tileType = tile === TILE_TYPE.GOLD ? 'gold' : tile === TILE_TYPE.FOREST ? 'wood' : tile === TILE_TYPE.STEEL ? 'steel' : null;
       if (tileType !== type) continue;
       const d = (x - nearTx) ** 2 + (y - nearTy) ** 2;
       if (d < bestDist) { bestDist = d; best = [x, y]; }
@@ -156,7 +160,9 @@ export class Game {
 
   depositResource(owner, type, amount) {
     const player = this.players[owner];
-    if (type === 'gold') player.gold += amount; else player.wood += amount;
+    if (type === 'gold') player.gold += amount;
+    else if (type === 'steel') player.steel += amount;
+    else player.wood += amount;
   }
 
   spawnUnitFromBuilding(building, role) {
@@ -230,6 +236,24 @@ export class Game {
     return true;
   }
 
+  // Market: converts a fixed batch of one resource into the other at a rate
+  // that improves with the marketRate upgrade. `fromType` is 'gold' or 'wood'.
+  tradeResources(building, fromType) {
+    if (this.isRemoteGuest) {
+      if (building.owner !== this.localOwner) return false;
+      this.network?.sendCommand('trade', { owner: this.localOwner, buildingId: building.id, fromType });
+      return true;
+    }
+    if (!building.complete || building.type !== 'market') return false;
+    const player = this.players[building.owner];
+    if (player[fromType] < TRADE_BATCH) { if (building.owner === this.localOwner) this.addMessage('Не хватает ресурса для обмена'); return false; }
+    const toType = fromType === 'gold' ? 'wood' : 'gold';
+    const rate = TRADE_BASE_RATE + getTradeRate(player);
+    player[fromType] -= TRADE_BATCH;
+    player[toType] += Math.round(TRADE_BATCH * rate);
+    return true;
+  }
+
   completeResearch(owner, key) {
     this.players[owner].upgrades[key] = true;
     if (owner === this.localOwner) this.addMessage(`Исследовано: ${UPGRADES[key].name}`);
@@ -256,6 +280,9 @@ export class Game {
 
   addMessage(text) { HUD.addLogMessage(text); }
 
+  spawnImpactEffect(x, y) { this.effects.push({ x, y, age: 0, kind: 'hit' }); }
+  spawnHealEffect(x, y) { this.effects.push({ x, y, age: 0, kind: 'heal' }); }
+
   // ---------------- id-based commands ----------------
   // Single source of truth for "make these units/buildings do X". Local
   // input handlers resolve `this.selection` into ids and call these; the
@@ -278,7 +305,8 @@ export class Game {
   applyAttackCommand(owner, unitIds, targetId) {
     const target = this.units.find((u) => !u.dead && u.id === targetId) || this.buildings.find((b) => !b.dead && b.id === targetId);
     if (!target) return;
-    for (const u of this._resolveUnits(owner, unitIds)) u.orderAttack(target);
+    // healers have no attack stats — they follow along and heal instead
+    for (const u of this._resolveUnits(owner, unitIds)) if (u.role !== 'healer') u.orderAttack(target);
   }
 
   applyGatherCommand(owner, unitIds, tx, ty, resourceType) {
@@ -308,6 +336,12 @@ export class Game {
     const building = this.buildings.find((b) => !b.dead && b.id === buildingId && b.owner === owner);
     if (!building) return false;
     return this.startResearch(building, key);
+  }
+
+  applyTradeCommand(owner, buildingId, fromType) {
+    const building = this.buildings.find((b) => !b.dead && b.id === buildingId && b.owner === owner);
+    if (!building) return false;
+    return this.tradeResources(building, fromType);
   }
 
   applyStopCommand(owner, unitIds) {
@@ -348,7 +382,7 @@ export class Game {
     if (!entity) {
       const tx = Math.floor(wx / TILE), ty = Math.floor(wy / TILE);
       const type = this.map.getTile(tx, ty);
-      const isResource = type === TILE_TYPE.GOLD || type === TILE_TYPE.FOREST;
+      const isResource = type === TILE_TYPE.GOLD || type === TILE_TYPE.FOREST || type === TILE_TYPE.STEEL;
       this.selectedResourceTile = isResource && this.fog.isExplored(tx, ty) ? { tx, ty } : null;
       if (!shiftKey) this.setSelection([]);
       return;
@@ -390,8 +424,8 @@ export class Game {
       return;
     }
     const tileType = this.map.getTile(tx, ty);
-    if ((tileType === TILE_TYPE.GOLD || tileType === TILE_TYPE.FOREST) && own.some((u) => u.role === 'worker')) {
-      const type = tileType === TILE_TYPE.GOLD ? 'gold' : 'wood';
+    if ((tileType === TILE_TYPE.GOLD || tileType === TILE_TYPE.FOREST || tileType === TILE_TYPE.STEEL) && own.some((u) => u.role === 'worker')) {
+      const type = tileType === TILE_TYPE.GOLD ? 'gold' : tileType === TILE_TYPE.STEEL ? 'steel' : 'wood';
       const workerIds = own.filter((u) => u.role === 'worker').map((u) => u.id);
       const otherIds = own.filter((u) => u.role !== 'worker').map((u) => u.id);
       if (workerIds.length) this._issue('gather', { unitIds: workerIds, tx, ty, resourceType: type }, () => this.applyGatherCommand(owner, workerIds, tx, ty, type));
@@ -457,7 +491,11 @@ export class Game {
     for (const b of this.buildings) b.update(dt, this);
     for (const p of this.projectiles) p.update(dt, this);
     separateUnits(this.units.filter((u) => !u.dead));
+    this._clampUnitsToMap();
     for (const ai of this.aiControllers) ai.update(dt, this);
+
+    for (const e of this.effects) e.age += dt;
+    this.effects = this.effects.filter((e) => e.age < IMPACT_EFFECT_DURATION);
 
     for (const owner of this.allOwners) {
       const player = this.players[owner];
@@ -465,7 +503,7 @@ export class Game {
       player.foodCap = START_FOOD_CAP + farms * FARM_FOOD;
     }
 
-    this._cleanupDead();
+    this._cleanupDead(dt);
 
     this._fogTimer += dt;
     if (this._fogTimer > 0.2) { this._fogTimer = 0; this._recomputeFog(); }
@@ -481,11 +519,26 @@ export class Game {
     const { mouseX, mouseY, keysDown } = this.input;
     const speed = 460 * dt;
     const edge = 16;
+    const dwellNeeded = 0.2; // seconds the cursor must rest at the edge before it starts scrolling
     let dx = 0, dy = 0;
-    if (mouseX >= 0 && mouseX < edge) dx -= speed;
-    else if (mouseX > this.camera.width - edge && mouseX <= this.camera.width) dx += speed;
-    if (mouseY >= 0 && mouseY < edge) dy -= speed;
-    else if (mouseY > this.camera.height - edge && mouseY <= this.camera.height) dy += speed;
+
+    const atLeft = mouseX >= 0 && mouseX < edge;
+    const atRight = mouseX > this.camera.width - edge && mouseX <= this.camera.width;
+    const atTop = mouseY >= 0 && mouseY < edge;
+    const atBottom = mouseY > this.camera.height - edge && mouseY <= this.camera.height;
+
+    if (!this._edgeDwell) this._edgeDwell = { left: 0, right: 0, top: 0, bottom: 0 };
+    const d = this._edgeDwell;
+    d.left = atLeft ? d.left + dt : 0;
+    d.right = atRight ? d.right + dt : 0;
+    d.top = atTop ? d.top + dt : 0;
+    d.bottom = atBottom ? d.bottom + dt : 0;
+
+    if (d.left > dwellNeeded) dx -= speed;
+    if (d.right > dwellNeeded) dx += speed;
+    if (d.top > dwellNeeded) dy -= speed;
+    if (d.bottom > dwellNeeded) dy += speed;
+
     if (keysDown.has('arrowleft')) dx -= speed;
     if (keysDown.has('arrowright')) dx += speed;
     if (keysDown.has('arrowup')) dy -= speed;
@@ -493,13 +546,37 @@ export class Game {
     if (dx || dy) this.camera.move(dx, dy);
   }
 
-  _cleanupDead() {
+  // separateUnits() pushes overlapping units apart with no notion of map
+  // edges — during a big fight clustered near a border (every start is in a
+  // corner), repeated pushes could drift a unit's pixel position past the
+  // map entirely with nothing to stop it. This keeps every unit's center
+  // inside the playable area after physics runs each frame.
+  _clampUnitsToMap() {
+    const maxX = this.map.width * TILE, maxY = this.map.height * TILE;
+    for (const u of this.units) {
+      if (u.dead) continue;
+      u.x = Math.max(u.radius, Math.min(maxX - u.radius, u.x));
+      u.y = Math.max(u.radius, Math.min(maxY - u.radius, u.y));
+    }
+  }
+
+  _cleanupDead(dt) {
+    // fallen units linger for a moment, fading out (see _drawUnitEntity),
+    // instead of just vanishing the instant their hp hits zero. The
+    // once-only side effects (food refund, dropping out of selection) fire
+    // on the frame a unit actually dies, not every frame it spends fading.
     for (const u of this.units) {
       if (!u.dead) continue;
-      releaseFood(this.players[u.owner], u.stats.food);
-      if (this.selection.includes(u)) this.selection = this.selection.filter((e) => e !== u);
+      if (!u.deathHandled) {
+        u.deathHandled = true;
+        u.deathTimer = 0;
+        releaseFood(this.players[u.owner], u.stats.food);
+        if (this.selection.includes(u)) this.selection = this.selection.filter((e) => e !== u);
+      } else {
+        u.deathTimer += dt;
+      }
     }
-    this.units = this.units.filter((u) => !u.dead);
+    this.units = this.units.filter((u) => !u.dead || u.deathTimer < DEATH_FADE_DURATION);
 
     for (const b of this.buildings) {
       if (!b.dead) continue;
@@ -562,7 +639,7 @@ export class Game {
       gameTime: this.gameTime,
       gameOver: this.gameOver,
       winnerOwner: this.winnerOwner,
-      players: this.players.map((p) => ({ gold: p.gold, wood: p.wood, foodCap: p.foodCap, foodUsed: p.foodUsed, faction: p.faction, upgrades: { ...p.upgrades } })),
+      players: this.players.map((p) => ({ gold: p.gold, wood: p.wood, steel: p.steel, foodCap: p.foodCap, foodUsed: p.foodUsed, faction: p.faction, upgrades: { ...p.upgrades } })),
       units: this.units.filter((u) => !u.dead).map((u) => ({
         id: u.id, role: u.role, owner: u.owner, faction: u.faction, x: u.x, y: u.y,
         hp: u.hp, maxHp: u.maxHp, state: u.state, carrying: u.carrying,
@@ -652,6 +729,7 @@ export class Game {
         const [sx, sy] = camera.worldToScreen(tx * TILE, ty * TILE);
         const seed = tx * 7 + ty * 13;
         if (type === TILE_TYPE.GOLD) drawGoldNode(ctx, sx, sy, TILE, this.gameTime, seed);
+        else if (type === TILE_TYPE.STEEL) drawSteelNode(ctx, sx, sy, TILE, this.gameTime, seed);
         else if (type === TILE_TYPE.FOREST) drawTree(ctx, sx, sy, TILE, seed, this.gameTime);
         const isSelectedResource = this.selectedResourceTile && this.selectedResourceTile.tx === tx && this.selectedResourceTile.ty === ty;
         if (isSelectedResource) {
@@ -675,6 +753,11 @@ export class Game {
       ctx.beginPath(); ctx.arc(sx, sy, 3, 0, Math.PI * 2); ctx.fill();
     }
 
+    for (const e of this.effects) {
+      if (!this.fog.isVisible(Math.floor(e.x / TILE), Math.floor(e.y / TILE))) continue;
+      this._drawImpactEffect(ctx, e);
+    }
+
     for (let ty = ty0; ty <= ty1; ty++) {
       for (let tx = tx0; tx <= tx1; tx++) {
         const [sx, sy] = camera.worldToScreen(tx * TILE, ty * TILE);
@@ -694,6 +777,7 @@ export class Game {
       [TILE_TYPE.WATER]: '#233f66',
       [TILE_TYPE.ROCK]: '#4a453c',
       [TILE_TYPE.GOLD]: '#4a4034',
+      [TILE_TYPE.STEEL]: '#33363e',
     }[type];
     ctx.fillStyle = base;
     ctx.fillRect(sx, sy, TILE + 1, TILE + 1);
@@ -702,6 +786,12 @@ export class Game {
       ctx.fillStyle = shade > 0 ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.04)';
       ctx.fillRect(sx, sy, TILE, TILE);
     }
+    blendTerrainEdges(ctx, type, sx, sy, TILE, {
+      top: this.map.getTile(tx, ty - 1),
+      bottom: this.map.getTile(tx, ty + 1),
+      left: this.map.getTile(tx - 1, ty),
+      right: this.map.getTile(tx + 1, ty),
+    });
     drawTerrainDetail(ctx, type, sx, sy, TILE, tx, ty, this.gameTime);
   }
 
@@ -752,10 +842,21 @@ export class Game {
   _drawUnitEntity(ctx, u) {
     const [sx, sy] = this.camera.worldToScreen(u.x, u.y);
     if (sx < -20 || sy < -20 || sx > this.camera.width + 20 || sy > this.camera.height + 20) return;
-    const drawSize = TILE * 0.85;
+    const drawSize = TILE * 0.85 * (u.role === 'champion' ? 1.18 : 1);
+
+    if (u.dead) {
+      // a fallen unit just fades out where it lies — no shadow/HP bar/ring
+      const fade = Math.max(0, 1 - (u.deathTimer || 0) / DEATH_FADE_DURATION);
+      ctx.save();
+      ctx.globalAlpha = fade;
+      drawUnit(ctx, u, FACTIONS[u.faction], sx, sy, drawSize);
+      ctx.restore();
+      return;
+    }
+
     ctx.fillStyle = 'rgba(0,0,0,0.32)';
     ctx.beginPath();
-    ctx.ellipse(sx, sy + drawSize * 0.4, drawSize * (u.role === 'cavalry' ? 0.42 : u.role === 'siege' ? 0.4 : 0.26), drawSize * 0.12, 0, 0, Math.PI * 2);
+    ctx.ellipse(sx, sy + drawSize * 0.4, drawSize * (u.role === 'cavalry' ? 0.42 : u.role === 'siege' ? 0.4 : u.role === 'champion' ? 0.32 : 0.26), drawSize * 0.12, 0, 0, Math.PI * 2);
     ctx.fill();
     if (u.selected) {
       ctx.strokeStyle = '#f0e6a0'; ctx.lineWidth = 1.5;
@@ -774,6 +875,26 @@ export class Game {
     ctx.fillStyle = '#200'; ctx.fillRect(sx, sy, width, 4);
     ctx.fillStyle = pct > 0.5 ? '#3ab03a' : pct > 0.25 ? '#c0a030' : '#b03a3a';
     ctx.fillRect(sx, sy, width * pct, 4);
+  }
+
+  // a quick radiating hit-spark wherever damage lands — cheap "juice" that
+  // makes combat read clearly without needing a real particle system
+  _drawImpactEffect(ctx, e) {
+    const [sx, sy] = this.camera.worldToScreen(e.x, e.y);
+    const t = e.age / IMPACT_EFFECT_DURATION;
+    const radius = 4 + t * 9;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, 1 - t);
+    ctx.strokeStyle = e.kind === 'heal' ? '#8af0a0' : '#fff2c0';
+    ctx.lineWidth = 1.6;
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2 + e.x * 0.7;
+      ctx.beginPath();
+      ctx.moveTo(sx + Math.cos(a) * radius * 0.4, sy + Math.sin(a) * radius * 0.4);
+      ctx.lineTo(sx + Math.cos(a) * radius, sy + Math.sin(a) * radius);
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   _drawPlacementGhost(ctx) {

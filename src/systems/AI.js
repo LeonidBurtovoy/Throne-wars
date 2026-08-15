@@ -61,6 +61,20 @@ export class AIController {
       game.trainUnit(base, 'worker');
     }
 
+    // 1b. rare Valyrian steel is needed for every upgrade — once the
+    // economy can spare a pair of hands, keep exactly one worker mining it
+    // instead of leaving research permanently stalled on a missing resource
+    if (workers.length >= 6) {
+      const steelWorkers = workers.filter((w) => w.gatherType === 'steel').length;
+      if (steelWorkers === 0) {
+        const steelTile = game.findNearbyResourceTile(base.tx, base.ty, 'steel');
+        if (steelTile) {
+          const candidate = workers.find((w) => w.gatherType === 'gold' && w.state === 'gathering');
+          if (candidate) candidate.orderGather(game.map, steelTile[0], steelTile[1], 'steel');
+        }
+      }
+    }
+
     // 2. food safety net
     const buildingFarm = buildings.some((b) => b.type === 'farm' && !b.complete);
     if (player.foodCap - player.foodUsed <= 2 && !buildingFarm) {
@@ -89,6 +103,10 @@ export class AIController {
       this._tryBuild(game, 'forge');
     } else if (workers.length >= 9 && !buildings.some((b) => b.type === 'workshop')) {
       this._tryBuild(game, 'workshop');
+    } else if (workers.length >= 8 && !buildings.some((b) => b.type === 'temple')) {
+      this._tryBuild(game, 'temple');
+    } else if (workers.length >= 10 && !buildings.some((b) => b.type === 'market')) {
+      this._tryBuild(game, 'market');
     }
 
     // 4. train military — within a building that offers more than one role
@@ -116,6 +134,14 @@ export class AIController {
         const [key] = options[Math.floor(Math.random() * options.length)];
         if (game.startResearch(b, key)) break;
       }
+    }
+
+    // 5b. lopsided economy? use the market to even it out instead of sitting
+    // on a pile of one resource while starved of the other
+    const market = buildings.find((b) => b.type === 'market' && b.complete);
+    if (market) {
+      if (player.gold > 300 && player.wood < 60) game.tradeResources(market, 'gold');
+      else if (player.wood > 300 && player.gold < 60) game.tradeResources(market, 'wood');
     }
 
     // 6. defend home — anything idle or still marching to a stale objective

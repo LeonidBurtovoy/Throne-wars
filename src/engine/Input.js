@@ -17,7 +17,14 @@ export class InputHandler {
   }
 
   _bind() {
-    this.canvas.addEventListener('mousemove', (e) => {
+    // bound to window, not the canvas: the topbar overlays the canvas's top
+    // edge and the bottom HUD bar sits right below it, so a canvas-only
+    // listener stops receiving events the moment the cursor crosses onto
+    // either — edge-pan would then either freeze mid-scroll (using the last
+    // in-canvas position forever) or never trigger at all near the top.
+    // Coordinates are computed relative to the canvas regardless of which
+    // element the event actually landed on, so this is safe everywhere.
+    window.addEventListener('mousemove', (e) => {
       const [sx, sy] = this._rectPos(e);
       this.mouseX = sx; this.mouseY = sy;
       const [wx, wy] = this.game.camera.screenToWorld(sx, sy);

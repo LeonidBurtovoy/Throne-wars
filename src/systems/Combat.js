@@ -1,5 +1,5 @@
 import { Projectile } from '../entities/Projectile.js';
-import { getAttackBonus } from '../data/upgrades.js';
+import { getAttackBonus, getHealAmountBonus } from '../data/upgrades.js';
 
 export function performAttack(game, attacker, target, opts = {}) {
   const stats = attacker.stats;
@@ -18,10 +18,20 @@ export function performAttack(game, attacker, target, opts = {}) {
   }
 }
 
+export function performHeal(game, healer, target) {
+  const amount = healer.stats.healAmount + getHealAmountBonus(healer);
+  target.hp = Math.min(target.maxHp, target.hp + amount);
+  game.spawnHealEffect(target.centerX, target.centerY);
+}
+
 export function applyDamageTo(game, target, rawDamage, attackerOwner) {
   target.takeDamage(rawDamage);
   target.lastDamageAt = game.gameTime;
   if (attackerOwner !== undefined) target.lastAttackerOwner = attackerOwner;
+  // single funnel point for every kind of hit (melee, projectile, splash) —
+  // one spot to trigger the on-screen impact burst instead of duplicating
+  // this at every attack call site
+  game.spawnImpactEffect(target.centerX, target.centerY);
 }
 
 export function dealSplashDamage(game, owner, x, y, radius, damage) {

@@ -129,10 +129,20 @@ body {
 }
 #net-status.error { color: #e08a8a; }
 
-/* ---------- Game screen ---------- */
-#game-screen { position: relative; background: #000; overflow: hidden; }
+/* ---------- Game screen ----------
+   Layout: topbar overlays the top edge of the canvas (thin, translucent —
+   not disruptive), but the minimap/selection/command bar sits in its own
+   row BELOW the canvas rather than floating on top of it, so nothing ever
+   covers the map view or gets clipped needing a scrollbar. */
+#game-screen {
+  position: relative;
+  background: #000;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
 
-#game-canvas { display: block; background: #202018; cursor: crosshair; }
+#game-canvas { display: block; flex-shrink: 0; background: #202018; cursor: crosshair; }
 
 #topbar {
   position: absolute;
@@ -152,32 +162,39 @@ body {
 .icon { width: 16px; height: 16px; display: inline-block; border-radius: 2px; }
 .icon-gold { background: #d8b23a; }
 .icon-wood { background: #7a5230; }
+.icon-steel { background: linear-gradient(135deg, #eef6fb, #6a92a8); }
 .icon-food { background: #b03a3a; }
 
 #game-clock { color: #b8a878; margin-left: auto; }
 #message-log { color: #e0a848; font-size: 0.9em; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+#bottom-hud {
+  flex-shrink: 0;
+  width: 100%;
+  height: 172px;
+  box-sizing: border-box;
+  background: #14120eee;
+  border-top: 2px solid #4a3d20;
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  padding: 10px;
+}
+
 #minimap-canvas {
-  position: absolute;
-  bottom: 8px; left: 8px;
+  flex-shrink: 0;
+  width: 150px;
+  height: 150px;
   background: #000;
   border: 2px solid #6a5a30;
-  z-index: 5;
   cursor: pointer;
 }
 
 #selection-panel {
-  position: absolute;
-  bottom: 0; right: 0;
-  width: 340px;
-  height: 214px;
-  background: #14120eee;
-  border-top: 2px solid #4a3d20;
-  border-left: 2px solid #4a3d20;
+  flex-shrink: 0;
+  width: 190px;
   display: flex;
-  padding: 10px;
   gap: 10px;
-  z-index: 5;
 }
 
 #selection-portrait {
@@ -190,9 +207,9 @@ body {
   image-rendering: pixelated;
 }
 
-#selection-info { flex-shrink: 0; width: 96px; }
+#selection-info { flex-shrink: 0; width: 106px; }
 #selection-name { font-size: 0.85em; color: #e0d0a0; margin-bottom: 6px; }
-#selection-hp-bar { width: 96px; height: 8px; background: #300; border: 1px solid #000; }
+#selection-hp-bar { width: 106px; height: 8px; background: #300; border: 1px solid #000; }
 #selection-hp-fill { height: 100%; background: #3ab03a; width: 100%; }
 #selection-stats { margin-top: 6px; font-size: 0.72em; color: #cfc4a0; line-height: 1.5; }
 #selection-stats span { display: inline-block; margin-right: 6px; }
@@ -201,12 +218,11 @@ body {
 #command-buttons {
   flex: 1;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  grid-auto-rows: minmax(48px, auto);
+  grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
+  grid-auto-rows: minmax(46px, auto);
   gap: 6px;
   align-content: start;
-  overflow-y: auto;
-  max-height: 194px;
+  overflow: visible;
 }
 
 .cmd-btn {

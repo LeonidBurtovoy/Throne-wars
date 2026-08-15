@@ -1,7 +1,7 @@
 import { UNIT_STATS } from '../data/factions.js';
 import { TILE, GATHER } from '../config.js';
 import { findPath } from '../map/Pathfinding.js';
-import { getArmorBonus, getGatherTimeMultiplier, getCarryCapacityBonus } from '../data/upgrades.js';
+import { getArmorBonus, getGatherTimeMultiplier, getCarryCapacityBonus, getHealRangeBonus } from '../data/upgrades.js';
 
 let nextId = 1;
 
@@ -26,18 +26,19 @@ export class Unit {
     this.selected = false;
     this.dead = false;
 
-    this.state = 'idle'; // idle | moving | attack-move | attacking | gathering | returning-to-drop | building
+    this.state = 'idle'; // idle | moving | attack-move | attacking | healing | gathering | returning-to-drop | building
     this.path = [];
     this.attackCooldown = 0;
     this.attackTarget = null;
+    this.healTarget = null; // healer only
     this.moveGoal = null; // {x,y} world - final destination for attack-move re-checks
     this.aggressive = true;
 
     // gathering
-    this.carrying = null; // { type: 'gold'|'wood', amount }
+    this.carrying = null; // { type: 'gold'|'wood'|'steel', amount }
     this.gatherTileX = null;
     this.gatherTileY = null;
-    this.gatherType = null; // 'gold' | 'wood'
+    this.gatherType = null; // 'gold' | 'wood' | 'steel'
     this.gatherTimer = 0;
     this.dropoffBuilding = null;
 
@@ -89,7 +90,7 @@ export class Unit {
     this.gatherTileX = tx;
     this.gatherTileY = ty;
     this.carrying = null;
-    const blocking = type === 'gold';
+    const blocking = type === 'gold' || type === 'steel';
     let destX = tx, destY = ty;
     if (blocking) {
       const adj = map.findAdjacentWalkable(tx, ty, this.tileX, this.tileY);
@@ -136,12 +137,15 @@ export class Unit {
 
     switch (this.state) {
       case 'idle':
-        if (this.aggressive) this._acquireNearbyEnemy(game);
+        if (this.role === 'healer') this._acquireNearbyWounded(game);
+        else if (this.aggressive) this._acquireNearbyEnemy(game);
         break;
 
       case 'moving':
       case 'attack-move': {
-        if (this.state === 'attack-move' && this._acquireNearbyEnemy(game)) break;
+        if (this.role === 'healer') {
+          if (this._acquireNearbyWounded(game)) break;
+        } else if (this.state === 'attack-move' && this._acquireNearbyEnemy(game)) break;
         const arrived = this._followPath(dt);
         if (arrived) this.state = 'idle';
         break;
@@ -149,6 +153,10 @@ export class Unit {
 
       case 'attacking':
         this._handleAttacking(dt, game);
+        break;
+
+      case 'healing':
+        this._handleHealing(dt, game);
         break;
 
       case 'moving-to-gather': {
@@ -178,7 +186,7 @@ export class Unit {
   }
 
   _acquireNearbyEnemy(game) {
-    if (this.stats.role === 'worker') return false;
+    if (this.role === 'worker' || this.role === 'healer') return false;
     const enemies = game.getEnemiesOf(this.owner);
     let best = null, bestDist = this.sight * TILE;
     for (const e of enemies) {
@@ -188,6 +196,48 @@ export class Unit {
     }
     if (best) { this.attackTarget = best; this.state = 'attacking'; return true; }
     return false;
+  }
+
+  // healer-only: scans for the nearest wounded ally (never itself, never an
+  // enemy) within heal range and, if found, switches into the 'healing'
+  // state — mirrors _acquireNearbyEnemy but heals instead of fights
+  _acquireNearbyWounded(game) {
+    const range = (this.stats.healRange + getHealRangeBonus(this)) * TILE;
+    let best = null, bestDist = range;
+    for (const u of game.units) {
+      if (u.dead || u === this || u.owner !== this.owner || u.hp >= u.maxHp) continue;
+      const d = Math.hypot(u.centerX - this.x, u.centerY - this.y);
+      if (d < bestDist) { best = u; bestDist = d; }
+    }
+    if (best) { this.healTarget = best; this.path = []; this.state = 'healing'; return true; }
+    return false;
+  }
+
+  _handleHealing(dt, game) {
+    const target = this.healTarget;
+    if (!target || target.dead || target.hp >= target.maxHp || target.owner !== this.owner) {
+      this.healTarget = null;
+      this.state = 'idle';
+      return;
+    }
+    const range = (this.stats.healRange + getHealRangeBonus(this)) * TILE;
+    const realDist = distanceToEntity(this, target);
+    if (realDist > range) {
+      this._repathTimer -= dt;
+      if (this.path.length === 0 || this._repathTimer <= 0) {
+        this._repathTimer = 0.5;
+        const t = targetTileOf(target);
+        const path = findPath(game.map, this.tileX, this.tileY, t.x, t.y);
+        this.path = (path || []).map(([px, py]) => ({ x: px * TILE + TILE / 2, y: py * TILE + TILE / 2 }));
+        if (this.path.length === 0) { this.healTarget = null; this.state = 'idle'; return; }
+      }
+      this._followPath(dt);
+      return;
+    }
+    if (this.attackCooldown <= 0) {
+      game.performHeal(this, target);
+      this.attackCooldown = this.stats.healCooldown;
+    }
   }
 
   _handleAttacking(dt, game) {
@@ -233,7 +283,9 @@ export class Unit {
       return;
     }
     this.gatherTimer += dt;
-    const baseTick = this.gatherType === 'gold' ? GATHER.gatherTimeGold : GATHER.gatherTimeWood;
+    const baseTick = this.gatherType === 'gold' ? GATHER.gatherTimeGold
+      : this.gatherType === 'steel' ? GATHER.gatherTimeSteel
+      : GATHER.gatherTimeWood;
     const tickTime = baseTick * getGatherTimeMultiplier(this);
     if (this.gatherTimer >= tickTime) {
       this.gatherTimer = 0;

@@ -13,6 +13,7 @@ export class TileMap {
         const t = this.tiles[y * width + x];
         if (t === TILE_TYPE.FOREST) this.resourceAmount.set(`${x},${y}`, GATHER.woodNodeAmount);
         else if (t === TILE_TYPE.GOLD) this.resourceAmount.set(`${x},${y}`, GATHER.goldNodeAmount);
+        else if (t === TILE_TYPE.STEEL) this.resourceAmount.set(`${x},${y}`, GATHER.steelNodeAmount);
       }
     }
   }

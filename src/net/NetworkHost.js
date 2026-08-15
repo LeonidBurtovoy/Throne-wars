@@ -25,6 +25,7 @@ export class NetworkHost {
       case 'build': g.applyBuildCommand(owner, msg.buildingType, msg.tx, msg.ty, msg.builderIds); break;
       case 'train': g.applyTrainCommand(owner, msg.buildingId, msg.role); break;
       case 'research': g.applyResearchCommand(owner, msg.buildingId, msg.key); break;
+      case 'trade': g.applyTradeCommand(owner, msg.buildingId, msg.fromType); break;
       case 'stop': g.applyStopCommand(owner, msg.unitIds); break;
       default: break;
     }
