@@ -133,9 +133,14 @@ export class Game {
   }
 
   // Picks which resource a newly-freed AI worker should gather, balancing
-  // toward roughly a 2:1 gold:wood ratio instead of always grabbing whichever
+  // toward roughly a 3:1 gold:wood ratio instead of always grabbing whichever
   // is geometrically closer — on some starts gold sits nearer than wood, and
   // "always nearest" left wood income at zero for the rest of the match.
+  // 3:1 (not 2:1) because actual spending skews even more gold-heavy: worker
+  // training is pure gold with zero wood, so a flat 2:1 gather ratio left
+  // gold permanently starved while wood piled up unused (confirmed via the
+  // headless economic simulation — gold sat near 0 for the whole match while
+  // wood climbed past 100 unspent).
   pickGatherAssignment(owner, nearTx, nearTy) {
     const goldTile = this.findNearbyResourceTile(nearTx, nearTy, 'gold');
     const woodTile = this.findNearbyResourceTile(nearTx, nearTy, 'wood');
@@ -144,8 +149,12 @@ export class Game {
     if (!woodTile) return { type: 'gold', tile: goldTile };
     const existingGold = this.units.filter((u) => !u.dead && u.owner === owner && u.gatherType === 'gold').length;
     const existingWood = this.units.filter((u) => !u.dead && u.owner === owner && u.gatherType === 'wood').length;
-    const ratio = existingWood === 0 ? Infinity : existingGold / existingWood;
-    return ratio > 2 ? { type: 'wood', tile: woodTile } : { type: 'gold', tile: goldTile };
+    // compare counts directly instead of a gold/wood ratio — the ratio's
+    // div-by-zero fallback used to send the very first worker(s) to wood
+    // (since anything/0 reads as "over the target"), which starved gold
+    // right when the AI needs it most. Comparing counts keeps the same
+    // steady-state target but correctly seeds gold first from a cold start.
+    return existingGold > existingWood * 3 ? { type: 'wood', tile: woodTile } : { type: 'gold', tile: goldTile };
   }
 
   findNearestDropoff(unit) {

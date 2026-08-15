@@ -1,12 +1,12 @@
-import { canAfford } from './Economy.js';
-import { BUILDING_STATS } from '../data/factions.js';
+import { canAfford, hasFoodRoom } from './Economy.js';
+import { BUILDING_STATS, UNIT_STATS } from '../data/factions.js';
 import { TILE } from '../config.js';
 import { upgradesForBuilding } from '../data/upgrades.js';
 
-const DECISION_INTERVAL = 2.5;
+const DECISION_INTERVAL = 1.5; // was 2.5 — react and build faster
 const UNDER_ATTACK_WINDOW = 9; // seconds a hit on our stuff still counts as "recent"
 
-const MAX_WORKERS = 14;
+const MAX_WORKERS = 18; // was 14 — bigger maps and more buildings need a bigger economy to actually staff them
 const PRODUCTION_SCALING = [
   { type: 'barracks', workersNeeded: 8 },
   { type: 'archery', workersNeeded: 10 },
@@ -23,9 +23,13 @@ export class AIController {
 
   // the worker target climbs over the course of the match instead of
   // plateauing, so a longer game keeps snowballing into a bigger economy
-  // and, in turn, unlocks the second round of production buildings below
+  // and, in turn, unlocks the second round of production buildings below.
+  // Ramps a bit faster than before (every 50s instead of every 60s) and
+  // caps higher (18 vs 14), but keeps the same base of 6 — pushing the
+  // early-game target too high starves gold (worker training is pure
+  // gold, no wood) at exactly the moment barracks/archery need it too.
   _targetWorkers(game) {
-    return Math.min(MAX_WORKERS, 6 + Math.floor(game.gameTime / 60));
+    return Math.min(MAX_WORKERS, 6 + Math.floor(game.gameTime / 50));
   }
 
   update(dt, game) {
@@ -64,7 +68,7 @@ export class AIController {
     // 1b. rare Valyrian steel is needed for every upgrade — once the
     // economy can spare a pair of hands, keep exactly one worker mining it
     // instead of leaving research permanently stalled on a missing resource
-    if (workers.length >= 6) {
+    if (workers.length >= 5) {
       const steelWorkers = workers.filter((w) => w.gatherType === 'steel').length;
       if (steelWorkers === 0) {
         const steelTile = game.findNearbyResourceTile(base.tx, base.ty, 'steel');
@@ -119,14 +123,25 @@ export class AIController {
       if (b.type === 'townhall' || !b.complete || b.trainQueue.length >= 2) continue;
       const trains = BUILDING_STATS[b.type].trains;
       if (!trains) continue;
-      const role = trains.length === 1
-        ? trains[0]
-        : trains.reduce((best, r) => (own.filter((u) => u.role === r).length < own.filter((u) => u.role === best).length ? r : best), trains[0]);
+      // prefer whichever role we have fewest of, but only among roles we can
+      // actually afford right now — otherwise the least-count pick gets
+      // permanently stuck reaching for an expensive unit (champion/legend)
+      // the instant it has 1+ of the cheaper option, silently failing every
+      // tick forever instead of continuing to train what it can afford
+      const affordable = trains.filter((r) => {
+        const s = UNIT_STATS[r];
+        if (s.maxCount && game.countOwned(b.owner, r) >= s.maxCount) return false;
+        return canAfford(player, s.cost) && hasFoodRoom(player, s.food);
+      });
+      const pool = affordable.length > 0 ? affordable : trains;
+      const role = pool.length === 1
+        ? pool[0]
+        : pool.reduce((best, r) => (own.filter((u) => u.role === r).length < own.filter((u) => u.role === best).length ? r : best), pool[0]);
       game.trainUnit(b, role);
     }
 
     // 5. once the economy is running, spend spare resources on research
-    if (workers.length >= 6 && player.gold > 250) {
+    if (workers.length >= 4 && player.gold > 180) {
       for (const b of buildings) {
         if (!b.complete || b.researching) continue;
         const options = upgradesForBuilding(b.type).filter(([key]) => !player.upgrades[key]);
