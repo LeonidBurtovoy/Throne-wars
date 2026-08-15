@@ -134,9 +134,9 @@ export const BUILDING_STATS = {
   },
   tower: {
     hp: 300, size: 1, buildTime: 30, cost: { gold: 80, wood: 40 },
-    sight: 6, armor: 3,
-    attack: 12, attackRange: 4.2, attackCooldown: 1.0, projectileSpeed: 280,
-    description: 'Неподвижное оборонительное строение — само атакует врагов в радиусе стрельбы лучника.',
+    sight: 7, armor: 3,
+    attack: 12, attackRange: 5.5, attackCooldown: 1.0, projectileSpeed: 280,
+    description: 'Неподвижное оборонительное строение — стреляет дальше любого мобильного юнита, само атакует врагов в радиусе обзора.',
   },
   forge: {
     hp: 400, size: 2, buildTime: 40, cost: { gold: 150, wood: 100 },
