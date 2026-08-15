@@ -1,0 +1,253 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #0c0c0f;
+  color: #e8dfc8;
+  font-family: 'Georgia', 'Times New Roman', serif;
+  user-select: none;
+}
+
+body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.screen { width: 100%; height: 100%; }
+.hidden { display: none !important; }
+
+/* the game screen is a fixed-size box (matches the canvas) centered in the
+   window — every panel inside it (topbar/minimap/selection panel) anchors
+   to ITS edges, not the browser window's, so on wide monitors they stay
+   glued to the game area instead of the window corners */
+#game-screen {
+  width: 960px;
+  height: 700px;
+  flex-shrink: 0;
+}
+
+/* ---------- Menu ---------- */
+#menu-screen, #net-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 16px;
+  background: radial-gradient(ellipse at center, #1a1a22 0%, #08080a 100%);
+  padding: 20px;
+  overflow-y: auto;
+}
+
+#menu-screen h1, #net-screen h1 {
+  font-size: 2.6em;
+  letter-spacing: 8px;
+  color: #d8c48a;
+  text-shadow: 0 0 20px rgba(216, 196, 138, 0.4);
+  margin-top: 6px;
+}
+
+.subtitle { color: #9a9280; font-style: italic; }
+
+.menu-section { text-align: center; }
+.menu-section h2 { color: #b8a878; margin-bottom: 8px; font-size: 1.05em; letter-spacing: 2px; }
+
+.option-row { display: flex; gap: 16px; }
+
+.option-card {
+  background: #16161c;
+  border: 2px solid #3a3a44;
+  color: #e8dfc8;
+  padding: 10px 18px;
+  width: 190px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-family: inherit;
+  transition: border-color 0.15s, transform 0.15s;
+  text-align: center;
+}
+.option-card:hover { border-color: #8a7a4a; transform: translateY(-2px); }
+.option-card.selected { border-color: #d8c48a; background: #21211c; box-shadow: 0 0 14px rgba(216,196,138,0.25); }
+.option-card small { display: block; margin-top: 6px; color: #9a9280; font-size: 0.78em; }
+
+.crest { width: 48px; height: 48px; margin: 0 auto 8px; border-radius: 50%; border: 2px solid #555; }
+.crest-stark { background: linear-gradient(135deg, #8a97a8, #dfe6ec); }
+.crest-targaryen { background: linear-gradient(135deg, #7a1414, #2a0606); }
+
+#start-btn {
+  margin-top: 10px;
+  padding: 14px 48px;
+  font-size: 1.2em;
+  letter-spacing: 3px;
+  background: #3a2f18;
+  border: 2px solid #8a7a4a;
+  color: #f0e6c8;
+  cursor: pointer;
+  border-radius: 4px;
+}
+#start-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+#start-btn:not(:disabled):hover { background: #4a3d20; }
+
+.link-btn {
+  background: transparent;
+  border: none;
+  color: #9ab0c8;
+  font-family: inherit;
+  font-size: 0.95em;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 6px;
+}
+.link-btn:hover { color: #c8dcf0; }
+.link-btn:disabled { opacity: 0.35; cursor: not-allowed; text-decoration: none; }
+
+#net-choice .option-card { width: 220px; }
+
+#net-code-input {
+  font-family: inherit;
+  font-size: 1.6em;
+  letter-spacing: 6px;
+  text-align: center;
+  text-transform: uppercase;
+  width: 160px;
+  padding: 10px;
+  background: #16161c;
+  border: 2px solid #3a3a44;
+  color: #f0e6c8;
+  border-radius: 4px;
+}
+#net-code-input:focus { outline: none; border-color: #8a7a4a; }
+
+#net-status {
+  min-height: 1.4em;
+  color: #d8c48a;
+  font-size: 1.1em;
+  letter-spacing: 1px;
+  text-align: center;
+}
+#net-status.error { color: #e08a8a; }
+
+/* ---------- Game screen ---------- */
+#game-screen { position: relative; background: #000; overflow: hidden; }
+
+#game-canvas { display: block; background: #202018; cursor: crosshair; }
+
+#topbar {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 40px;
+  background: #16141088;
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 0 16px;
+  border-bottom: 2px solid #4a3d20;
+  z-index: 5;
+}
+
+.resource { display: flex; align-items: center; gap: 6px; font-size: 1.05em; color: #f0e6c8; }
+.icon { width: 16px; height: 16px; display: inline-block; border-radius: 2px; }
+.icon-gold { background: #d8b23a; }
+.icon-wood { background: #7a5230; }
+.icon-food { background: #b03a3a; }
+
+#game-clock { color: #b8a878; margin-left: auto; }
+#message-log { color: #e0a848; font-size: 0.9em; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+#minimap-canvas {
+  position: absolute;
+  bottom: 8px; left: 8px;
+  background: #000;
+  border: 2px solid #6a5a30;
+  z-index: 5;
+  cursor: pointer;
+}
+
+#selection-panel {
+  position: absolute;
+  bottom: 0; right: 0;
+  width: 340px;
+  height: 214px;
+  background: #14120eee;
+  border-top: 2px solid #4a3d20;
+  border-left: 2px solid #4a3d20;
+  display: flex;
+  padding: 10px;
+  gap: 10px;
+  z-index: 5;
+}
+
+#selection-portrait {
+  width: 64px; height: 64px;
+  background: #26221a;
+  border: 2px solid #5a4a28;
+  flex-shrink: 0;
+  background-size: cover;
+  background-position: center;
+  image-rendering: pixelated;
+}
+
+#selection-info { flex-shrink: 0; width: 96px; }
+#selection-name { font-size: 0.85em; color: #e0d0a0; margin-bottom: 6px; }
+#selection-hp-bar { width: 96px; height: 8px; background: #300; border: 1px solid #000; }
+#selection-hp-fill { height: 100%; background: #3ab03a; width: 100%; }
+#selection-stats { margin-top: 6px; font-size: 0.72em; color: #cfc4a0; line-height: 1.5; }
+#selection-stats span { display: inline-block; margin-right: 6px; }
+#selection-stats .bonus { color: #7ee08a; }
+
+#command-buttons {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-auto-rows: minmax(48px, auto);
+  gap: 6px;
+  align-content: start;
+  overflow-y: auto;
+  max-height: 194px;
+}
+
+.cmd-btn {
+  background: #221e16;
+  border: 1px solid #5a4a28;
+  color: #e8dfc8;
+  font-size: 0.68em;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  position: relative;
+  padding: 3px 2px;
+  gap: 1px;
+}
+.cmd-btn:hover { background: #362c18; }
+.cmd-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.cmd-btn .cost { font-size: 0.85em; color: #b8a878; }
+.cmd-icon {
+  width: 22px; height: 22px;
+  image-rendering: pixelated;
+}
+
+.overlay {
+  position: absolute; inset: 0;
+  background: #000000cc;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  z-index: 20;
+}
+#victory-text { font-size: 2.4em; letter-spacing: 4px; color: #d8c48a; }
+#restart-btn {
+  padding: 12px 32px;
+  background: #3a2f18;
+  border: 2px solid #8a7a4a;
+  color: #f0e6c8;
+  cursor: pointer;
+  font-size: 1em;
+}

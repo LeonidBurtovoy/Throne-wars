@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Throne Wars</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div id="menu-screen" class="screen">
+  <h1>THRONE WARS</h1>
+  <p class="subtitle">Стратегия в реальном времени по мотивам "Игры престолов"</p>
+
+  <div class="menu-section">
+    <h2>Выберите дом</h2>
+    <div id="faction-select" class="option-row">
+      <button class="option-card" data-faction="stark">
+        <div class="crest crest-stark"></div>
+        <div>Дом Старков</div>
+        <small>Север. Лёд, волки, крепкая пехота.</small>
+      </button>
+      <button class="option-card" data-faction="targaryen">
+        <div class="crest crest-targaryen"></div>
+        <div>Дом Таргариенов</div>
+        <small>Пламя и кровь. Быстрая конница, огненная мощь.</small>
+      </button>
+    </div>
+  </div>
+
+  <div class="menu-section">
+    <h2>Выберите карту</h2>
+    <div id="map-select" class="option-row">
+      <button class="option-card" data-map="map1">
+        <div>Речные земли</div>
+        <small>Малая карта, ресурсы рядом со стартом</small>
+      </button>
+      <button class="option-card" data-map="map2">
+        <div>Пепельный перевал</div>
+        <small>Карта побольше, больше золота, узкие проходы</small>
+      </button>
+    </div>
+  </div>
+
+  <div class="menu-section">
+    <h2>Число противников</h2>
+    <div id="opponents-select" class="option-row">
+      <button class="option-card" data-opponents="1">
+        <div>1 противник</div>
+        <small>Один ИИ-соперник</small>
+      </button>
+      <button class="option-card" data-opponents="2">
+        <div>2 противника</div>
+        <small>Свободная схватка на троих</small>
+      </button>
+      <button class="option-card" data-opponents="3">
+        <div>3 противника</div>
+        <small>Максимум хаоса — все против всех</small>
+      </button>
+    </div>
+  </div>
+
+  <button id="start-btn" disabled>Начать битву</button>
+  <button id="goto-net-btn" class="link-btn">Играть с другом по сети →</button>
+</div>
+
+<div id="net-screen" class="screen hidden">
+  <h1>ИГРА ПО СЕТИ</h1>
+
+  <div id="net-choice" class="menu-section">
+    <div class="option-row">
+      <button id="net-host-choice" class="option-card">
+        <div>Создать комнату</div>
+        <small>Ты выбираешь дом и карту, другу останется только код</small>
+      </button>
+      <button id="net-join-choice" class="option-card">
+        <div>Присоединиться</div>
+        <small>Введи код комнаты, который прислал друг</small>
+      </button>
+    </div>
+  </div>
+
+  <div id="net-host-panel" class="menu-section hidden">
+    <h2>Выберите дом</h2>
+    <div id="net-faction-select" class="option-row">
+      <button class="option-card" data-faction="stark">
+        <div class="crest crest-stark"></div>
+        <div>Дом Старков</div>
+      </button>
+      <button class="option-card" data-faction="targaryen">
+        <div class="crest crest-targaryen"></div>
+        <div>Дом Таргариенов</div>
+      </button>
+    </div>
+    <h2 style="margin-top:14px;">Выберите карту</h2>
+    <div id="net-map-select" class="option-row">
+      <button class="option-card" data-map="map1"><div>Речные земли</div></button>
+      <button class="option-card" data-map="map2"><div>Пепельный перевал</div></button>
+    </div>
+    <button id="net-host-start-btn" class="link-btn" style="margin-top:14px;" disabled>Создать комнату</button>
+  </div>
+
+  <div id="net-join-panel" class="menu-section hidden">
+    <h2>Код комнаты</h2>
+    <input id="net-code-input" type="text" maxlength="5" placeholder="XXXXX" autocomplete="off" />
+    <button id="net-join-btn" class="link-btn" style="margin-top:10px;">Подключиться</button>
+  </div>
+
+  <div id="net-status"></div>
+  <button id="net-back-btn" class="link-btn">← Назад</button>
+</div>
+
+<div id="game-screen" class="screen hidden">
+  <div id="topbar">
+    <div class="resource"><span class="icon icon-gold"></span><span id="res-gold">0</span></div>
+    <div class="resource"><span class="icon icon-wood"></span><span id="res-wood">0</span></div>
+    <div class="resource"><span class="icon icon-food"></span><span id="res-food">0/0</span></div>
+    <div id="game-clock">00:00</div>
+    <div id="message-log"></div>
+  </div>
+
+  <canvas id="game-canvas"></canvas>
+
+  <canvas id="minimap-canvas" width="180" height="180"></canvas>
+
+  <div id="selection-panel">
+    <div id="selection-portrait"></div>
+    <div id="selection-info">
+      <div id="selection-name">-</div>
+      <div id="selection-hp-bar"><div id="selection-hp-fill"></div></div>
+      <div id="selection-stats"></div>
+    </div>
+    <div id="command-buttons"></div>
+  </div>
+
+  <div id="victory-screen" class="overlay hidden">
+    <div id="victory-text"></div>
+    <button id="restart-btn">В меню</button>
+  </div>
+</div>
+
+<div id="boot-error" style="display:none; position:fixed; inset:0; z-index:9999; background:#1a0505ee; color:#ffd0d0; font-family:monospace; font-size:13px; padding:24px; overflow:auto; white-space:pre-wrap;"></div>
+<script>
+  (function () {
+    var box = document.getElementById('boot-error');
+    function show(title, detail) {
+      box.style.display = 'block';
+      box.textContent += title + '\n' + detail + '\n\n';
+    }
+    window.addEventListener('error', function (e) {
+      show('JS ERROR: ' + e.message, (e.filename || '') + ':' + e.lineno + ':' + e.colno + '\n' + (e.error && e.error.stack ? e.error.stack : ''));
+    });
+    window.addEventListener('unhandledrejection', function (e) {
+      show('UNHANDLED PROMISE REJECTION', e.reason && e.reason.stack ? e.reason.stack : String(e.reason));
+    });
+  })();
+</script>
+<script src="https://unpkg.com/peerjs@1/dist/peerjs.min.js"></script>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
