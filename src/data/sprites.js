@@ -99,6 +99,39 @@ function legPair(ctx, hipY, footY, spread, phase, color, width = 2.4) {
   }
 }
 
+// A single jointed quadruped/beast leg: hip -> knee -> paw instead of one
+// straight stroke, plus a paw blob (or claws) at the foot — reads as an
+// actual animal limb with a bend instead of a stick figure's leg.
+function beastLeg(ctx, hipX, hipY, footY, phase, spread, color, width, claws = false) {
+  const swing = Math.sin(phase * Math.PI * 2) * spread;
+  const footX = hipX + swing;
+  const kneeX = hipX + swing * 0.4;
+  const kneeY = hipY + (footY - hipY) * 0.55;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(hipX, hipY);
+  ctx.lineTo(kneeX, kneeY);
+  ctx.lineTo(footX, footY);
+  ctx.stroke();
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.ellipse(footX, footY, width * 0.6, width * 0.38, 0, 0, Math.PI * 2);
+  ctx.fill();
+  if (claws) {
+    ctx.fillStyle = '#1a1512';
+    for (const cx of [-0.55, 0, 0.55]) {
+      ctx.beginPath();
+      ctx.moveTo(footX + cx * width, footY + width * 0.3);
+      ctx.lineTo(footX + cx * width - 0.3, footY + width * 0.95);
+      ctx.lineTo(footX + cx * width + 0.3, footY + width * 0.95);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+}
+
 function head(ctx, cy, r, skinColor) {
   const g = ctx.createRadialGradient(-r * 0.3, cy - r * 0.35, r * 0.1, 0, cy, r * 1.1);
   g.addColorStop(0, lighten(skinColor, 0.3));
@@ -378,16 +411,28 @@ function drawDirewolfBeast(ctx, faction, anim) {
   const { walkPhase, attackT } = anim;
   const stride = Math.sin(walkPhase * Math.PI * 2);
 
-  // four legs, front and back pairs swinging in opposite phase
-  legPair(ctx, 4.5, 9.6, 2.6, walkPhase, '#2c2824', 3.2);
-  legPair(ctx, 4.5, 9.6, 2.6, walkPhase + 0.5, '#3a352e', 3.2);
+  // ground contact shadow — grounds the paws instead of the beast looking
+  // like it floats over its own feet
+  ctx.fillStyle = 'rgba(0,0,0,0.22)';
+  ctx.beginPath(); ctx.ellipse(0, 9.6, 7.4, 1.6, 0, 0, Math.PI * 2); ctx.fill();
 
-  // bushy tail, curls up behind
+  // four legs, diagonally-opposite pairs swinging together (a real trot
+  // gait), each anchored under the shoulder (front, +x) or haunch (back,
+  // -x) instead of all four bunched at the body's center
+  const furDark = '#2c2824', furMid = '#3a352e';
+  beastLeg(ctx, 4.8, 4.6, 9.8, walkPhase, 2.4, furDark, 2.6);
+  beastLeg(ctx, -4.8, 4.6, 9.8, walkPhase + 0.5, 2.4, furMid, 2.6);
+  beastLeg(ctx, 5.6, 4.2, 9.6, walkPhase + 0.5, 2.2, furMid, 2.4);
+  beastLeg(ctx, -5.6, 4.2, 9.6, walkPhase, 2.2, furDark, 2.4);
+
+  // bushy tail — trails from the REAR (-x, opposite the head), not the face
   ctx.strokeStyle = '#4a453c'; ctx.lineWidth = 3; ctx.lineCap = 'round';
   ctx.beginPath();
-  ctx.moveTo(6.8, 2);
-  ctx.quadraticCurveTo(10.5, 0.5 + stride, 9.5, -3.5);
+  ctx.moveTo(-7, 1.6);
+  ctx.quadraticCurveTo(-10.8, 0.2 + stride, -10, -3.8);
   ctx.stroke();
+  ctx.strokeStyle = '#5a554a'; ctx.lineWidth = 1.4;
+  ctx.beginPath(); ctx.moveTo(-8.5, 0.6); ctx.quadraticCurveTo(-10.5, 0, -9.9, -2.6); ctx.stroke();
 
   // long low body, fur shaded light-top/dark-belly for volume
   const bodyGrad = ctx.createLinearGradient(0, -3, 0, 5);
@@ -396,40 +441,54 @@ function drawDirewolfBeast(ctx, faction, anim) {
   bodyGrad.addColorStop(1, darkenColor('#57564e', 0.35));
   ctx.fillStyle = bodyGrad;
   ctx.beginPath();
-  ctx.ellipse(0, 1, 8.4, 3.8, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, 1, 8, 3.6, 0, 0, Math.PI * 2);
   ctx.fill();
-  // frost-pale chest marking in the house colour, not armour — a natural marking
+  // frost-pale chest/belly marking in the house colour, not armour
   ctx.fillStyle = faction.colorSecondary;
   ctx.beginPath();
-  ctx.ellipse(2.5, 2.6, 2.8, 1.6, 0, 0, Math.PI * 2);
+  ctx.ellipse(2.5, 2.6, 2.6, 1.5, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 0.6;
-  for (const yy of [-1.2, 0.4, 2]) { ctx.beginPath(); ctx.moveTo(-5, yy); ctx.lineTo(4, yy - 0.6); ctx.stroke(); }
+  for (const yy of [-1.2, 0.4, 2]) { ctx.beginPath(); ctx.moveTo(-4.8, yy); ctx.lineTo(3.6, yy - 0.6); ctx.stroke(); }
+
+  // neck bridges the gap between body and head so the head doesn't look
+  // bolted on separately
+  ctx.fillStyle = darkenColor('#57564e', 0.05);
+  ctx.beginPath();
+  ctx.moveTo(4.8, -1.6); ctx.lineTo(7.6, -4.2); ctx.lineTo(6.4, 0.6); ctx.lineTo(4.4, 1.4);
+  ctx.closePath(); ctx.fill();
 
   // head lunges forward and down when attacking, otherwise bobs with the stride
   const lunge = attackT !== null ? Math.sin(attackT * Math.PI) * 2.4 : 0;
   ctx.save();
-  ctx.translate(7 + lunge, -2.4 - Math.abs(stride) * 0.4);
-  ctx.rotate(-0.15 + lunge * 0.05);
+  ctx.translate(7.4 + lunge, -3 - Math.abs(stride) * 0.4);
+  ctx.rotate(-0.1 + lunge * 0.05);
   const headGrad = ctx.createRadialGradient(-1, -1, 0.5, 0, 0, 4.5);
   headGrad.addColorStop(0, lighten('#6b6a62', 0.2));
   headGrad.addColorStop(1, darkenColor('#57564e', 0.3));
   ctx.fillStyle = headGrad;
+  // elongated skull tapering into a snout, instead of a short blunt polygon
   ctx.beginPath();
-  ctx.moveTo(-2.6, -2.4); ctx.lineTo(2.6, -2); ctx.lineTo(4.6, 0.4);
-  ctx.lineTo(2.4, 2.2); ctx.lineTo(-2.6, 2.4);
+  ctx.moveTo(-2.4, -2); ctx.lineTo(1.6, -2.2); ctx.lineTo(3.4, -1.2);
+  ctx.lineTo(5.6, -0.2); ctx.lineTo(5.4, 0.7); ctx.lineTo(3.2, 1.1);
+  ctx.lineTo(1.4, 2.2); ctx.lineTo(-2.4, 2.1);
   ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 0.4; ctx.stroke();
+  // nose tip
+  ctx.fillStyle = '#1c1a16';
+  ctx.beginPath(); ctx.ellipse(5.4, 0.25, 0.5, 0.4, 0, 0, Math.PI * 2); ctx.fill();
   // ears
   ctx.fillStyle = '#3a352e';
-  ctx.beginPath(); ctx.moveTo(-1.8, -2.2); ctx.lineTo(-1, -4.6); ctx.lineTo(0.2, -2.4); ctx.closePath(); ctx.fill();
-  ctx.beginPath(); ctx.moveTo(0.6, -2.4); ctx.lineTo(1.6, -4.4); ctx.lineTo(2.4, -2.1); ctx.closePath(); ctx.fill();
-  // bared teeth
+  ctx.beginPath(); ctx.moveTo(-1.8, -2); ctx.lineTo(-1.2, -4.6); ctx.lineTo(0.2, -2.2); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(0.6, -2.2); ctx.lineTo(1.6, -4.4); ctx.lineTo(2.2, -1.8); ctx.closePath(); ctx.fill();
+  // bared teeth along the jawline
   ctx.fillStyle = '#eef0ea';
-  ctx.beginPath(); ctx.moveTo(4.2, 0.6); ctx.lineTo(5, 1); ctx.lineTo(4.2, 1.3); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(4.6, 0.5); ctx.lineTo(5.3, 0.85); ctx.lineTo(4.6, 1); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(3.4, 1); ctx.lineTo(3.9, 1.3); ctx.lineTo(3.3, 1.4); ctx.closePath(); ctx.fill();
   // glowing eyes
   const glow = 0.6 + 0.4 * Math.max(0, Math.sin(walkPhase * Math.PI * 3));
   ctx.fillStyle = `rgba(210,235,255,${glow.toFixed(2)})`;
-  ctx.beginPath(); ctx.arc(0.4, -0.8, 0.55, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(0.6, -0.7, 0.5, 0, Math.PI * 2); ctx.fill();
   ctx.restore();
 }
 
@@ -437,7 +496,16 @@ function drawDragonBeast(ctx, faction, anim) {
   const { walkPhase, attackT, moving } = anim;
   const flap = Math.sin(walkPhase * Math.PI * 2) * (moving ? 0.5 : 0.18);
 
-  legPair(ctx, 3.5, 8.6, 1.6, walkPhase, darkenColor(faction.colorPrimary, 0.4), 3);
+  // ground contact shadow — grounds the paws instead of the beast looking
+  // like it floats over its own feet
+  ctx.fillStyle = 'rgba(0,0,0,0.22)';
+  ctx.beginPath(); ctx.ellipse(-1, 8.6, 6.2, 1.5, 0, 0, Math.PI * 2); ctx.fill();
+
+  // hind legs, jointed with claws — a wyvern-style dragon (front limbs are
+  // the wings, not separate arms) rather than four identical stick legs
+  const legColor = darkenColor(faction.colorPrimary, 0.4);
+  beastLeg(ctx, -2.6, 3.2, 8.6, walkPhase, 1.8, legColor, 2.8, true);
+  beastLeg(ctx, 0.4, 3.4, 8.4, walkPhase + 0.5, 1.6, legColor, 2.6, true);
 
   // wings — spread behind the body, flapping with the stride
   for (const side of [-1, 1]) {
@@ -484,11 +552,23 @@ function drawDragonBeast(ctx, faction, anim) {
   for (let i = 0; i < 3; i++) {
     ctx.beginPath(); ctx.arc(-1 + i * 2.4, 0.5, 3.2 - i * 0.3, -0.6, 0.6); ctx.stroke();
   }
-  // spine ridge spikes
+  // spine ridge spikes — follow the body ellipse's actual top curve so they
+  // sit flush on the back for the full length from shoulder to tail base,
+  // tapering shorter toward each end instead of a short row floating over
+  // just the middle
   ctx.fillStyle = darkenColor(faction.colorPrimary, 0.2);
-  for (let i = 0; i < 4; i++) {
-    const sxp = 4 - i * 2.4, syp = -2.6 - Math.sin(i) * 0.3;
-    ctx.beginPath(); ctx.moveTo(sxp, syp); ctx.lineTo(sxp - 1, syp - 2); ctx.lineTo(sxp + 0.8, syp - 0.4); ctx.closePath(); ctx.fill();
+  const bodyCx = -1, bodyCy = 0.5, bodyRx = 7.5, bodyRy = 3.6;
+  for (let i = 0; i < 7; i++) {
+    const sxp = 5.5 - i * 2.1;
+    const t = Math.max(-0.92, Math.min(0.92, (sxp - bodyCx) / bodyRx));
+    const topY = bodyCy - bodyRy * Math.sqrt(1 - t * t);
+    const spikeLen = 1.3 + Math.max(0, 1.5 - Math.abs(i - 2) * 0.3);
+    ctx.beginPath();
+    ctx.moveTo(sxp, topY + 0.7);
+    ctx.lineTo(sxp - 0.9, topY + 0.7 - spikeLen);
+    ctx.lineTo(sxp + 0.7, topY + 0.4);
+    ctx.closePath();
+    ctx.fill();
   }
 
   // long neck rising to a horned head
