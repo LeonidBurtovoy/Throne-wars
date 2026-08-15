@@ -364,15 +364,172 @@ function drawHealer(ctx, faction, anim) {
   ctx.restore();
 }
 
+// the strongest unit in the game — a huge beast rather than an armoured
+// person, so it gets its own quadruped/winged silhouette entirely instead
+// of reusing the humanoid leg/head/torso helpers above. Stark and Targaryen
+// versions are genuinely different creatures (direwolf vs dragon), not a
+// recolour, so this dispatches on factionKey rather than faction colours.
+function drawLegend(ctx, faction, anim, factionKey) {
+  if (factionKey === 'targaryen') drawDragonBeast(ctx, faction, anim);
+  else drawDirewolfBeast(ctx, faction, anim);
+}
+
+function drawDirewolfBeast(ctx, faction, anim) {
+  const { walkPhase, attackT } = anim;
+  const stride = Math.sin(walkPhase * Math.PI * 2);
+
+  // four legs, front and back pairs swinging in opposite phase
+  legPair(ctx, 4.5, 9.6, 2.6, walkPhase, '#2c2824', 3.2);
+  legPair(ctx, 4.5, 9.6, 2.6, walkPhase + 0.5, '#3a352e', 3.2);
+
+  // bushy tail, curls up behind
+  ctx.strokeStyle = '#4a453c'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(6.8, 2);
+  ctx.quadraticCurveTo(10.5, 0.5 + stride, 9.5, -3.5);
+  ctx.stroke();
+
+  // long low body, fur shaded light-top/dark-belly for volume
+  const bodyGrad = ctx.createLinearGradient(0, -3, 0, 5);
+  bodyGrad.addColorStop(0, lighten('#6b6a62', 0.18));
+  bodyGrad.addColorStop(0.5, '#57564e');
+  bodyGrad.addColorStop(1, darkenColor('#57564e', 0.35));
+  ctx.fillStyle = bodyGrad;
+  ctx.beginPath();
+  ctx.ellipse(0, 1, 8.4, 3.8, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // frost-pale chest marking in the house colour, not armour — a natural marking
+  ctx.fillStyle = faction.colorSecondary;
+  ctx.beginPath();
+  ctx.ellipse(2.5, 2.6, 2.8, 1.6, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 0.6;
+  for (const yy of [-1.2, 0.4, 2]) { ctx.beginPath(); ctx.moveTo(-5, yy); ctx.lineTo(4, yy - 0.6); ctx.stroke(); }
+
+  // head lunges forward and down when attacking, otherwise bobs with the stride
+  const lunge = attackT !== null ? Math.sin(attackT * Math.PI) * 2.4 : 0;
+  ctx.save();
+  ctx.translate(7 + lunge, -2.4 - Math.abs(stride) * 0.4);
+  ctx.rotate(-0.15 + lunge * 0.05);
+  const headGrad = ctx.createRadialGradient(-1, -1, 0.5, 0, 0, 4.5);
+  headGrad.addColorStop(0, lighten('#6b6a62', 0.2));
+  headGrad.addColorStop(1, darkenColor('#57564e', 0.3));
+  ctx.fillStyle = headGrad;
+  ctx.beginPath();
+  ctx.moveTo(-2.6, -2.4); ctx.lineTo(2.6, -2); ctx.lineTo(4.6, 0.4);
+  ctx.lineTo(2.4, 2.2); ctx.lineTo(-2.6, 2.4);
+  ctx.closePath(); ctx.fill();
+  // ears
+  ctx.fillStyle = '#3a352e';
+  ctx.beginPath(); ctx.moveTo(-1.8, -2.2); ctx.lineTo(-1, -4.6); ctx.lineTo(0.2, -2.4); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(0.6, -2.4); ctx.lineTo(1.6, -4.4); ctx.lineTo(2.4, -2.1); ctx.closePath(); ctx.fill();
+  // bared teeth
+  ctx.fillStyle = '#eef0ea';
+  ctx.beginPath(); ctx.moveTo(4.2, 0.6); ctx.lineTo(5, 1); ctx.lineTo(4.2, 1.3); ctx.closePath(); ctx.fill();
+  // glowing eyes
+  const glow = 0.6 + 0.4 * Math.max(0, Math.sin(walkPhase * Math.PI * 3));
+  ctx.fillStyle = `rgba(210,235,255,${glow.toFixed(2)})`;
+  ctx.beginPath(); ctx.arc(0.4, -0.8, 0.55, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+function drawDragonBeast(ctx, faction, anim) {
+  const { walkPhase, attackT, moving } = anim;
+  const flap = Math.sin(walkPhase * Math.PI * 2) * (moving ? 0.5 : 0.18);
+
+  legPair(ctx, 3.5, 8.6, 1.6, walkPhase, darkenColor(faction.colorPrimary, 0.4), 3);
+
+  // wings — spread behind the body, flapping with the stride
+  for (const side of [-1, 1]) {
+    ctx.save();
+    ctx.translate(-1.5, -1);
+    ctx.scale(side, 1);
+    ctx.rotate(-0.3 - flap);
+    const wingGrad = ctx.createLinearGradient(0, 0, 8, -6);
+    wingGrad.addColorStop(0, darkenColor(faction.colorPrimary, 0.35));
+    wingGrad.addColorStop(1, darkenColor(faction.colorPrimary, 0.6));
+    ctx.fillStyle = wingGrad;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(7.5, -6.5);
+    ctx.lineTo(9.5, -3);
+    ctx.lineTo(6, -1.5);
+    ctx.lineTo(7, 1.5);
+    ctx.lineTo(3, 0.5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.lineWidth = 0.6; ctx.stroke();
+    ctx.restore();
+  }
+
+  // tail, tapering with a spade tip
+  ctx.strokeStyle = darkenColor(faction.colorPrimary, 0.3); ctx.lineWidth = 3; ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(-6, 1.5);
+  ctx.quadraticCurveTo(-10, 3, -9.5, 6.5);
+  ctx.stroke();
+  ctx.fillStyle = darkenColor(faction.colorPrimary, 0.3);
+  ctx.beginPath(); ctx.moveTo(-9.5, 6.5); ctx.lineTo(-11, 8.5); ctx.lineTo(-8.3, 7.6); ctx.closePath(); ctx.fill();
+
+  // scaled body, lit-top/shadowed-belly gradient
+  const bodyGrad = ctx.createLinearGradient(0, -3.5, 0, 4.5);
+  bodyGrad.addColorStop(0, lighten(faction.colorPrimary, 0.15));
+  bodyGrad.addColorStop(0.5, faction.colorPrimary);
+  bodyGrad.addColorStop(1, darkenColor(faction.colorPrimary, 0.45));
+  ctx.fillStyle = bodyGrad;
+  ctx.beginPath();
+  ctx.ellipse(-1, 0.5, 7.5, 3.6, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 0.5;
+  for (let i = 0; i < 3; i++) {
+    ctx.beginPath(); ctx.arc(-1 + i * 2.4, 0.5, 3.2 - i * 0.3, -0.6, 0.6); ctx.stroke();
+  }
+  // spine ridge spikes
+  ctx.fillStyle = darkenColor(faction.colorPrimary, 0.2);
+  for (let i = 0; i < 4; i++) {
+    const sxp = 4 - i * 2.4, syp = -2.6 - Math.sin(i) * 0.3;
+    ctx.beginPath(); ctx.moveTo(sxp, syp); ctx.lineTo(sxp - 1, syp - 2); ctx.lineTo(sxp + 0.8, syp - 0.4); ctx.closePath(); ctx.fill();
+  }
+
+  // long neck rising to a horned head
+  const lunge = attackT !== null ? Math.sin(attackT * Math.PI) : 0;
+  ctx.save();
+  ctx.translate(6.5, -1.5);
+  ctx.rotate(-0.5 - lunge * 0.35);
+  ctx.fillStyle = bodyGrad;
+  ctx.beginPath();
+  ctx.moveTo(0, 2); ctx.lineTo(-0.5, -4.5); ctx.lineTo(1.5, -5.5); ctx.lineTo(2.5, 1.5);
+  ctx.closePath(); ctx.fill();
+  // head + jaw
+  ctx.save();
+  ctx.translate(0.8, -5.5);
+  ctx.rotate(0.3 + lunge * 0.4);
+  ctx.fillStyle = darkenColor(faction.colorPrimary, 0.1);
+  ctx.beginPath();
+  ctx.moveTo(-1.6, -1); ctx.lineTo(2.6, -1.6); ctx.lineTo(4.6, 0.4); ctx.lineTo(2.2, 1.6); ctx.lineTo(-1.6, 1.4);
+  ctx.closePath(); ctx.fill();
+  // horns
+  ctx.strokeStyle = '#2a2420'; ctx.lineWidth = 1; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-1, -1.2); ctx.lineTo(-2.6, -3); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0.2, -1.6); ctx.lineTo(-0.8, -3.4); ctx.stroke();
+  // ember glow in the open jaw — this beast is ready to breathe fire
+  flame(ctx, 4, 0.2, 0.55, anim.walkPhase * 10, 3);
+  const eyeGlow = 0.6 + 0.4 * Math.max(0, Math.sin(walkPhase * Math.PI * 3));
+  ctx.fillStyle = `rgba(255,210,140,${eyeGlow.toFixed(2)})`;
+  ctx.beginPath(); ctx.arc(-0.4, -0.6, 0.5, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  ctx.restore();
+}
+
 const DRAWERS = {
   worker: drawWorker, melee: drawMelee, ranged: drawRanged, cavalry: drawCavalry, siege: drawSiege,
-  champion: drawChampion, healer: drawHealer,
+  champion: drawChampion, healer: drawHealer, legend: drawLegend,
 };
 
 export function drawUnit(ctx, unit, faction, sx, sy, drawSize) {
   const anim = unitAnim(unit);
   ctx.imageSmoothingEnabled = false;
-  withUnit(ctx, sx, sy, drawSize, () => DRAWERS[unit.role](ctx, faction, anim));
+  withUnit(ctx, sx, sy, drawSize, () => DRAWERS[unit.role](ctx, faction, anim, unit.faction));
 }
 
 // ---------------- Buildings ----------------
@@ -889,7 +1046,7 @@ export function getUnitIcon(role, faction, factionKey) {
     const c = makeCanvas(36, 36);
     const ctx = c.getContext('2d');
     ctx.imageSmoothingEnabled = false;
-    drawUnit(ctx, { role, bobTimer: 0.15, state: 'idle' }, faction, 18, 23, 28);
+    drawUnit(ctx, { role, faction: factionKey, bobTimer: 0.15, state: 'idle' }, faction, 18, 23, 28);
     unitIconCache.set(key, c.toDataURL());
   }
   return unitIconCache.get(key);

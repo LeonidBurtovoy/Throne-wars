@@ -197,6 +197,10 @@ export class Game {
     if (!trains || !trains.includes(role)) return false;
     const player = this.players[building.owner];
     const stats = UNIT_STATS[role];
+    if (stats.maxCount && this.countOwned(building.owner, role) >= stats.maxCount) {
+      if (building.owner === this.localOwner) this.addMessage('Уже есть в наличии — больше одного не завести');
+      return false;
+    }
     if (!canAfford(player, stats.cost)) { if (building.owner === this.localOwner) this.addMessage('Не хватает ресурсов'); return false; }
     if (!hasFoodRoom(player, stats.food)) { if (building.owner === this.localOwner) this.addMessage('Постройте больше пашен'); return false; }
     spendResources(player, stats.cost);
@@ -276,6 +280,18 @@ export class Game {
 
   getAnyBuildingOfOwner(owner) {
     return this.buildings.find((b) => !b.dead && b.owner === owner) || null;
+  }
+
+  // living units of this role plus ones already queued in a production
+  // building — used to enforce maxCount-capped units like the legend beast
+  // so a second one can't be queued the instant the first is spent/trained
+  countOwned(owner, role) {
+    const alive = this.units.filter((u) => !u.dead && u.owner === owner && u.role === role).length;
+    const queued = this.buildings.reduce((sum, b) => {
+      if (b.dead || b.owner !== owner) return sum;
+      return sum + b.trainQueue.filter((j) => j.role === role).length;
+    }, 0);
+    return alive + queued;
   }
 
   addMessage(text) { HUD.addLogMessage(text); }
@@ -673,7 +689,7 @@ export class Game {
     this.units = data.units.map((u) => ({
       id: u.id, kind: 'unit', role: u.role, owner: u.owner, faction: u.faction,
       x: u.x, y: u.y, tileX: Math.floor(u.x / TILE), tileY: Math.floor(u.y / TILE),
-      centerX: u.x, centerY: u.y, radius: TILE * 0.27,
+      centerX: u.x, centerY: u.y, radius: u.role === 'legend' ? TILE * 0.48 : TILE * 0.27,
       hp: u.hp, maxHp: u.maxHp, state: u.state, carrying: u.carrying,
       bobTimer: u.bobTimer, attackCooldown: u.attackCooldown, selected: selectedIds.has(u.id),
       stats: UNIT_STATS[u.role], armor: UNIT_STATS[u.role].armor, upgrades: this.players[u.owner]?.upgrades,
@@ -841,8 +857,9 @@ export class Game {
 
   _drawUnitEntity(ctx, u) {
     const [sx, sy] = this.camera.worldToScreen(u.x, u.y);
-    if (sx < -20 || sy < -20 || sx > this.camera.width + 20 || sy > this.camera.height + 20) return;
-    const drawSize = TILE * 0.85 * (u.role === 'champion' ? 1.18 : 1);
+    const cullMargin = u.role === 'legend' ? 55 : 20;
+    if (sx < -cullMargin || sy < -cullMargin || sx > this.camera.width + cullMargin || sy > this.camera.height + cullMargin) return;
+    const drawSize = TILE * 0.85 * (u.role === 'legend' ? 1.9 : u.role === 'champion' ? 1.18 : 1);
 
     if (u.dead) {
       // a fallen unit just fades out where it lies — no shadow/HP bar/ring
@@ -856,7 +873,7 @@ export class Game {
 
     ctx.fillStyle = 'rgba(0,0,0,0.32)';
     ctx.beginPath();
-    ctx.ellipse(sx, sy + drawSize * 0.4, drawSize * (u.role === 'cavalry' ? 0.42 : u.role === 'siege' ? 0.4 : u.role === 'champion' ? 0.32 : 0.26), drawSize * 0.12, 0, 0, Math.PI * 2);
+    ctx.ellipse(sx, sy + drawSize * 0.4, drawSize * (u.role === 'legend' ? 0.44 : u.role === 'cavalry' ? 0.42 : u.role === 'siege' ? 0.4 : u.role === 'champion' ? 0.32 : 0.26), drawSize * 0.12, 0, 0, Math.PI * 2);
     ctx.fill();
     if (u.selected) {
       ctx.strokeStyle = '#f0e6a0'; ctx.lineWidth = 1.5;

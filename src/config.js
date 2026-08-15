@@ -29,7 +29,7 @@ export const GATHER = {
   gatherTimeSteel: 2.6,  // slow — Valyrian steel is deliberately scarce and precious
   goldNodeAmount: 4000,
   woodNodeAmount: 200,   // per forest tile
-  steelNodeAmount: 60,   // tiny compared to gold/wood — a handful of veins per map
+  steelNodeAmount: 1000, // per vein — plenty to fund the steel-gated upgrades and the legend unit
 };
 
 export const FARM_FOOD = 6;

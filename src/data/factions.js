@@ -14,6 +14,7 @@ export const FACTIONS = {
       siege: 'Осадная башня',
       champion: 'Рыцарь Винтерфелла',
       healer: 'Мейстер',
+      legend: 'Лютоволк',
     },
     buildingNames: {
       townhall: 'Чертог Старков',
@@ -40,6 +41,7 @@ export const FACTIONS = {
       siege: 'Скорпион',
       champion: 'Драконий страж',
       healer: 'Жрец Р\'глора',
+      legend: 'Дракон',
     },
     buildingNames: {
       townhall: 'Драконье Гнездо',
@@ -104,6 +106,16 @@ export const UNIT_STATS = {
     healAmount: 4, healRange: 3.2, healCooldown: 1.2,
     description: 'Не сражается — сам находит и лечит раненых союзников поблизости. Держите его рядом с отрядом в бою.',
   },
+  // the single strongest unit in the game — huge, expensive, steel-gated,
+  // and capped at one per player (see maxCount) so it stays a rare showpiece
+  // rather than a spammable answer to everything
+  legend: {
+    role: 'legend', hp: 450, speed: 65, sight: 7, buildTime: 90,
+    cost: { gold: 380, wood: 180, steel: 50 }, food: 4,
+    attack: 40, attackRange: 0.9, attackCooldown: 1.0, armor: 7,
+    maxCount: 1,
+    description: 'Величайший зверь дома — огромный, почти неуязвимый в бою. На весь матч можно вырастить только одного.',
+  },
 };
 
 export const BUILDING_STATS = {
@@ -129,8 +141,8 @@ export const BUILDING_STATS = {
   },
   stable: {
     hp: 450, size: 2, buildTime: 45, cost: { gold: 150, wood: 100 },
-    trains: ['cavalry', 'siege'], sight: 4, armor: 2,
-    description: 'Готовит конницу и осадные машины.',
+    trains: ['cavalry', 'siege', 'legend'], sight: 4, armor: 2,
+    description: 'Готовит конницу, осадные машины и легендарного зверя дома.',
   },
   tower: {
     hp: 300, size: 1, buildTime: 30, cost: { gold: 80, wood: 40 },

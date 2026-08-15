@@ -21,7 +21,7 @@ export class Unit {
     this.speed = stats.speed;
     this.sight = stats.sight;
     this.armor = stats.armor;
-    this.radius = TILE * 0.27;
+    this.radius = role === 'legend' ? TILE * 0.48 : TILE * 0.27;
 
     this.selected = false;
     this.dead = false;

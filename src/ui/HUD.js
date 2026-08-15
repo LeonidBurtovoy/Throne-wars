@@ -145,12 +145,14 @@ export function updateSelectionPanel(game) {
       for (const role of trains) {
         const stats = UNIT_STATS[role];
         const queued = first.trainQueue.length;
-        const name = faction.unitNames[role] + (queued > 0 ? ` (${queued})` : '');
-        const disabled = !canAfford(player, stats.cost) || !hasFoodRoom(player, stats.food) || queued >= 5;
+        const capped = stats.maxCount && game.countOwned(player.id, role) >= stats.maxCount;
+        const name = faction.unitNames[role] + (queued > 0 ? ` (${queued})` : capped ? ' (макс.)' : '');
+        const disabled = capped || !canAfford(player, stats.cost) || !hasFoodRoom(player, stats.food) || queued >= 5;
+        const tooltip = capped ? `${stats.description} Уже есть — больше одного не завести за игру.` : stats.description;
         addButton(name, stats.cost, disabled, () => {
           game.trainUnit(first, role);
           updateSelectionPanel(game);
-        }, getUnitIcon(role, faction, first.faction), stats.description);
+        }, getUnitIcon(role, faction, first.faction), tooltip);
       }
     }
     const upgrades = first.complete ? upgradesForBuilding(first.type) : [];
