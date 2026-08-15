@@ -36,7 +36,7 @@ export const FARM_FOOD = 6;
 export const START_GOLD = 300;
 export const START_WOOD = 150;
 export const START_STEEL = 0;
-export const START_FOOD_CAP = 4;
+export const START_FOOD_CAP = 6;
 
 // market resource-exchange: how much of the source resource is spent per
 // trade, and what fraction of it comes back as the other resource before
