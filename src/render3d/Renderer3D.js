@@ -17,17 +17,18 @@
 // the "did the click land on the right tile" math.
 
 import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
-import { createUnitModel, createBuildingModel } from './models.js';
+import { createUnitModel, createBuildingModel, createTreeModel, createGoldNodeModel, createSteelNodeModel } from './models.js';
 import { FACTIONS } from '../data/factions.js';
 
 const TERRAIN_COLOR = {
   0: '#2f5c28', // grass
-  1: '#1d481f', // forest
+  1: '#1d481f', // forest (tree-stand props sit on top, see _syncResourceProps)
   2: '#1c4f8c', // water
   3: '#544c3e', // rock
-  4: '#4a4034', // gold (base tile — no prop mesh yet, see file header note)
-  5: '#33363e', // steel
+  4: '#4a4034', // gold (ore-outcrop prop sits on top)
+  5: '#33363e', // steel (ore-outcrop prop sits on top)
 };
+const RESOURCE_TILE_TYPES = new Set([1, 4, 5]); // forest, gold, steel
 
 export class Renderer3D {
   constructor(canvas, viewportWidth, viewportHeight) {
@@ -67,6 +68,7 @@ export class Renderer3D {
 
     this._unitMeshes = new Map();
     this._buildingMeshes = new Map();
+    this._resourceMeshes = new Map();
     this._projectileMeshes = [];
     this._placementGhost = null;
   }
@@ -206,11 +208,51 @@ export class Renderer3D {
       entry.model.scale.y = Math.max(0.08, b.buildProgress);
       entry.ring.visible = !!b.selected;
       entry.group.visible = true;
+      // farm windmill blades — spins whether the farm is complete or not,
+      // same simple time-based rotation the old 2D windmill used
+      if (entry.model.userData.spinner) entry.model.userData.spinner.rotation.z = game.gameTime * 1.4;
     }
     for (const [id, entry] of this._buildingMeshes) {
       if (seen.has(id)) continue;
       this.scene.remove(entry.group);
       this._buildingMeshes.delete(id);
+    }
+  }
+
+  // forest/gold/steel tiles get a real prop on top of the colored ground
+  // (a small tree stand or an ore outcrop) instead of just a flat color —
+  // rebuilt whenever a tile's resource type changes (e.g. a chopped-down
+  // forest tile reverting to grass removes its tree stand)
+  _syncResourceProps(game) {
+    const map = game.map, fog = game.fog, TILE = game.tileSize;
+    const seen = new Set();
+    for (let ty = 0; ty < map.height; ty++) {
+      for (let tx = 0; tx < map.width; tx++) {
+        if (!fog.isExplored(tx, ty)) continue;
+        const type = map.getTile(tx, ty);
+        if (!RESOURCE_TILE_TYPES.has(type)) continue;
+        const key = tx + ',' + ty;
+        let entry = this._resourceMeshes.get(key);
+        if (entry && entry.type !== type) {
+          this.scene.remove(entry.model);
+          this._resourceMeshes.delete(key);
+          entry = null;
+        }
+        if (!entry) {
+          const seed = tx * 7 + ty * 13;
+          const model = type === 1 ? createTreeModel(seed) : type === 4 ? createGoldNodeModel() : createSteelNodeModel();
+          model.position.set(tx * TILE + TILE / 2, 0, ty * TILE + TILE / 2);
+          this.scene.add(model);
+          entry = { model, type };
+          this._resourceMeshes.set(key, entry);
+        }
+        seen.add(key);
+      }
+    }
+    for (const [key, entry] of this._resourceMeshes) {
+      if (seen.has(key)) continue;
+      this.scene.remove(entry.model);
+      this._resourceMeshes.delete(key);
     }
   }
 
@@ -268,11 +310,13 @@ export class Renderer3D {
       if (this._terrainMesh) this.scene.remove(this._terrainMesh);
       this._buildTerrain(game.map, game.tileSize);
       this._updateTerrainColors(game);
+      this._syncResourceProps(game);
     } else {
       this._terrainColorDirty += 1;
       if (this._terrainColorDirty >= 6) { // throttle to roughly a few times/sec at 60fps
         this._terrainColorDirty = 0;
         this._updateTerrainColors(game);
+        this._syncResourceProps(game);
       }
     }
 
