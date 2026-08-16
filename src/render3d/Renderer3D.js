@@ -29,6 +29,8 @@ const TERRAIN_COLOR = {
   5: '#33363e', // steel (ore-outcrop prop sits on top)
 };
 const RESOURCE_TILE_TYPES = new Set([1, 4, 5]); // forest, gold, steel
+const MOVING_STATES = new Set(['moving', 'attack-move', 'moving-to-gather', 'moving-to-build', 'returning-to-drop']);
+const WORKING_STATES = new Set(['gathering', 'building']);
 
 // Visual-only scale multipliers — bigger, more imposing models on screen
 // without touching gameplay math (collision radius, tile footprint,
@@ -118,6 +120,7 @@ export class Renderer3D {
     this._buildingMeshes = new Map();
     this._resourceMeshes = new Map();
     this._projectileMeshes = [];
+    this._effectMeshes = [];
     this._placementGhost = null;
   }
 
@@ -184,6 +187,28 @@ export class Renderer3D {
     colorAttr.needsUpdate = true;
   }
 
+  // A left-anchored bar (dark background + colored fill), tilted at a fixed
+  // angle to face the fixed-angle camera. The fill geometry never resizes —
+  // only its scale.x plus a matching position offset — so it depletes/fills
+  // from a fixed left edge instead of shrinking from both sides at once.
+  // Shared by unit/building HP bars and the building training/research bar.
+  _makeBar(width, fillColor) {
+    const bg = box(width, 2.6, 1, '#161412', { roughness: 1 });
+    const fill = box(width, 1.9, 1.5, fillColor, { roughness: 0.6 });
+    const bar = new THREE.Group();
+    bar.add(bg);
+    bar.add(fill);
+    bar.rotation.x = -0.85;
+    return { bar, fill, width };
+  }
+
+  _setBarPct(barInfo, pct, color) {
+    const p = Math.max(0.03, Math.min(1, pct));
+    barInfo.fill.scale.x = p;
+    barInfo.fill.position.x = -(barInfo.width / 2) * (1 - p);
+    if (color) barInfo.fill.material.color.set(color);
+  }
+
   // ---------------- entity sync ----------------
   _syncUnits(game) {
     const seen = new Set();
@@ -204,11 +229,19 @@ export class Renderer3D {
         ring.rotation.x = -Math.PI / 2;
         ring.position.y = 0.5;
         ring.visible = false;
+        // HP bar — always visible above the unit, not just when selected
+        // (matches the old 2D renderer's health bar, which was never
+        // gated behind selection either)
+        const bbox = new THREE.Box3().setFromObject(model);
+        const hpWidth = Math.max(9, (bbox.max.x - bbox.min.x) * 0.55);
+        const hpBarInfo = this._makeBar(hpWidth, '#3ab03a');
+        hpBarInfo.bar.position.y = bbox.max.y + 4;
         const group = new THREE.Group();
         group.add(model);
         group.add(ring);
+        group.add(hpBarInfo.bar);
         this.scene.add(group);
-        entry = { group, model, ring, lastX: u.x, lastY: u.y };
+        entry = { group, model, ring, hpBarInfo, lastX: u.x, lastY: u.y };
         this._unitMeshes.set(u.id, entry);
       }
       entry.group.position.set(u.x, 0, u.y);
@@ -219,6 +252,41 @@ export class Renderer3D {
       }
       entry.ring.visible = !!u.selected;
       entry.group.visible = true;
+
+      const hpPct = Math.max(0, u.hp / u.maxHp);
+      this._setBarPct(entry.hpBarInfo, hpPct, hpPct > 0.5 ? '#3ab03a' : hpPct > 0.25 ? '#c0a030' : '#b03a3a');
+
+      // bring back the animation the 2D version had: a walking bob, weapon
+      // swings on attack, tool swings while gathering/building, dragon wing
+      // flaps and cart wheels turning — static gliding models read as dead
+      const moving = MOVING_STATES.has(u.state);
+      const working = WORKING_STATES.has(u.state);
+      entry.model.position.y = moving ? Math.abs(Math.sin((u.bobTimer * 3.6) % (Math.PI * 2))) * 2.2 : 0;
+
+      const weapon = entry.model.userData.weapon;
+      if (weapon) {
+        let swing = 0;
+        if (u.state === 'attacking' && u.attackCooldown > 0 && u.stats.attackCooldown > 0) {
+          const elapsed = u.stats.attackCooldown - u.attackCooldown;
+          const swingDur = Math.min(0.4, u.stats.attackCooldown * 0.55);
+          if (elapsed >= 0 && elapsed < swingDur) swing = Math.sin((elapsed / swingDur) * Math.PI) * 1.1;
+        } else if (working) {
+          swing = Math.sin(u.bobTimer * 2.6 * Math.PI * 2) * 0.6;
+        }
+        weapon.rotation.x = swing;
+      }
+      const wings = entry.model.userData.wings;
+      if (wings) {
+        // both wings flap together in sync (like a real bird/dragon), not
+        // opposite each other — their built-in Y rotation is what's already
+        // mirrored (left vs right), Z is the flap axis and stays shared
+        const flap = Math.sin(u.bobTimer * 5) * (moving ? 0.5 : 0.15);
+        wings.forEach((wing) => { wing.rotation.z = 0.35 + flap; });
+      }
+      const wheels = entry.model.userData.wheels;
+      if (wheels && moving) {
+        wheels.forEach((wheel) => { wheel.rotation.y = u.bobTimer * 6; });
+      }
 
       // what the worker is hauling — a prop on their back, swapped in/out
       // as gathering starts/stops or the resource type changes
@@ -265,25 +333,20 @@ export class Renderer3D {
         ring.rotation.x = -Math.PI / 2;
         ring.position.y = 0.5;
         ring.visible = false;
-        // training/research progress bar — floats above the building,
-        // tilted at a fixed angle to face the (also fixed-angle) camera.
-        // Left-anchored fill: the bar geometry itself never resizes, only
-        // its scale + a matching position offset, so it depletes/fills
-        // from a fixed left edge instead of shrinking from both sides.
-        const barWidth = footprintPx * 0.7;
-        const barBg = box(barWidth, 3, 1.2, '#161412', { roughness: 1 });
-        const barFill = box(barWidth, 2.2, 1.6, '#d8b23a', { roughness: 0.6 });
-        const bar = new THREE.Group();
-        bar.add(barBg);
-        bar.add(barFill);
-        bar.rotation.x = -0.85;
-        bar.visible = false;
+        // training/research progress bar — only shown while something is
+        // actually queued/researching
+        const progressInfo = this._makeBar(footprintPx * 0.7, '#d8b23a');
+        progressInfo.bar.visible = false;
+        // HP bar — always visible above the building, same as the old 2D
+        // renderer (never gated behind selection)
+        const hpInfo = this._makeBar(footprintPx * 0.7, '#3ab03a');
         const group = new THREE.Group();
         group.add(model);
         group.add(ring);
-        group.add(bar);
+        group.add(progressInfo.bar);
+        group.add(hpInfo.bar);
         this.scene.add(group);
-        entry = { group, model, ring, bar, barFill, barWidth };
+        entry = { group, model, ring, progressInfo, hpInfo };
         this._buildingMeshes.set(b.id, entry);
       }
       entry.group.position.set(b.centerX, 0, b.centerY);
@@ -293,6 +356,10 @@ export class Renderer3D {
       // farm windmill blades — spins whether the farm is complete or not,
       // same simple time-based rotation the old 2D windmill used
       if (entry.model.userData.spinner) entry.model.userData.spinner.rotation.z = game.gameTime * 1.4;
+
+      const roofY = entry.model.userData.roofTopY || 20;
+      entry.hpInfo.bar.position.y = roofY + 4;
+      this._setBarPct(entry.hpInfo, Math.max(0, b.hp / b.maxHp));
 
       let barPct = null, barColor = null;
       if (b.trainQueue && b.trainQueue.length > 0) {
@@ -304,14 +371,11 @@ export class Renderer3D {
         barColor = '#7ac6e0';
       }
       if (barPct !== null && b.complete) {
-        entry.bar.visible = true;
-        entry.bar.position.y = (entry.model.userData.roofTopY || 20) + 8;
-        const pct = Math.max(0.03, Math.min(1, barPct));
-        entry.barFill.scale.x = pct;
-        entry.barFill.position.x = -(entry.barWidth / 2) * (1 - pct);
-        entry.barFill.material.color.set(barColor);
+        entry.progressInfo.bar.visible = true;
+        entry.progressInfo.bar.position.y = roofY + 9;
+        this._setBarPct(entry.progressInfo, barPct, barColor);
       } else {
-        entry.bar.visible = false;
+        entry.progressInfo.bar.visible = false;
       }
     }
     for (const [id, entry] of this._buildingMeshes) {
@@ -370,6 +434,28 @@ export class Renderer3D {
       mesh.position.set(p.x, 8, p.y);
       this.scene.add(mesh);
       this._projectileMeshes.push(mesh);
+    }
+  }
+
+  // radiating spark burst wherever damage lands (gold) or healing ticks
+  // (green) — cheap "juice" that makes combat/healing read clearly,
+  // rebuilt from scratch every frame since game.effects entries are
+  // themselves short-lived (game.js prunes them after ~0.25s)
+  _syncEffects(game) {
+    for (const m of this._effectMeshes) this.scene.remove(m);
+    this._effectMeshes = [];
+    for (const e of game.effects) {
+      if (!game.fog.isVisible(Math.floor(e.x / game.tileSize), Math.floor(e.y / game.tileSize))) continue;
+      const t = Math.min(1, e.age / 0.25);
+      const color = e.kind === 'heal' ? '#8af0a0' : '#fff2c0';
+      const mesh = new THREE.Mesh(
+        new THREE.RingGeometry(2 + t * 6, 3 + t * 7, 10),
+        new THREE.MeshBasicMaterial({ color, transparent: true, opacity: Math.max(0, 1 - t), side: THREE.DoubleSide })
+      );
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.position.set(e.x, 6, e.y);
+      this.scene.add(mesh);
+      this._effectMeshes.push(mesh);
     }
   }
 
@@ -442,6 +528,7 @@ export class Renderer3D {
     this._syncUnits(game);
     this._syncBuildings(game);
     this._syncProjectiles(game);
+    this._syncEffects(game);
     this._syncPlacementGhost(game);
 
     this.renderer.render(this.scene, this.camera);

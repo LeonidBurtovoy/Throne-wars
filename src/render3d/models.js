@@ -96,6 +96,7 @@ function createWorkerModel(faction) {
   const head2 = box(1.4, 1.4, 3.2, METAL_DARK, METAL_FINISH);
   head2.position.set(9, 12, 0);
   g.add(head2);
+  g.userData.weapon = handle; // swung by Renderer3D while gathering/attacking
   return g;
 }
 
@@ -109,6 +110,7 @@ function createMeleeModel(faction) {
   sword.position.set(7, 12, 0);
   sword.rotation.z = -0.3;
   g.add(sword);
+  g.userData.weapon = sword;
   return g;
 }
 
@@ -139,6 +141,7 @@ function createChampionModel(faction) {
   greatsword.position.set(8, g.userData.torsoTopY + 2, 0);
   greatsword.rotation.z = -0.15;
   g.add(greatsword);
+  g.userData.weapon = greatsword;
   return g;
 }
 
@@ -175,6 +178,8 @@ function createCavalryModel(faction) {
   const pennant = new THREE.Mesh(new THREE.BoxGeometry(4, 3, 0.2), new THREE.MeshStandardMaterial({ color: faction.colorSecondary, side: THREE.DoubleSide }));
   pennant.position.set(9, 21, -6);
   g.add(pennant);
+  g.userData.weapon = lance;
+  g.userData.legs = rider; // the rider bobs with the horse's gallop
   return g;
 }
 
@@ -183,16 +188,20 @@ function createSiegeModel() {
   const wagon = box(26, 8, 16, WOOD);
   wagon.position.y = 4;
   g.add(wagon);
+  const wheels = [];
   for (const wz of [-8.5, 8.5]) {
     const wheel = cyl(4, 4, 2, METAL_DARK, 10, METAL_FINISH);
     wheel.rotation.x = Math.PI / 2;
     wheel.position.set(0, 4, wz);
     g.add(wheel);
+    wheels.push(wheel);
   }
   const arm = box(4, 4, 18, WOOD_LIGHT);
   arm.position.set(0, 11, 0);
   arm.rotation.x = -0.3;
   g.add(arm);
+  g.userData.weapon = arm;
+  g.userData.wheels = wheels; // spin while the wagon moves
   return g;
 }
 
@@ -272,13 +281,16 @@ function createDragonModel(faction) {
   const fire = ember(1.6);
   fire.position.set(30, 17, 0);
   g.add(fire);
+  const wings = [];
   for (const wz of [1, -1]) {
     const wing = new THREE.Mesh(new THREE.BoxGeometry(20, 1, 14), new THREE.MeshStandardMaterial({ color: dark, side: THREE.DoubleSide }));
     wing.position.set(-2, 19, wz * 9);
     wing.rotation.z = 0.35;
     wing.rotation.y = wz * 0.35;
     g.add(wing);
+    wings.push(wing);
   }
+  g.userData.wings = wings; // flapped by Renderer3D while airborne/moving
   const tail = box(4, 4, 20, primary);
   tail.position.set(-20, 10, 0);
   g.add(tail);
