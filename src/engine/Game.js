@@ -797,10 +797,10 @@ export class Game {
   _drawTerrainTile(ctx, tx, ty, sx, sy) {
     const type = this.map.getTile(tx, ty);
     const base = {
-      [TILE_TYPE.GRASS]: '#33502c',
-      [TILE_TYPE.FOREST]: '#2a4327',
-      [TILE_TYPE.WATER]: '#233f66',
-      [TILE_TYPE.ROCK]: '#4a453c',
+      [TILE_TYPE.GRASS]: '#2f5c28',
+      [TILE_TYPE.FOREST]: '#1d481f',
+      [TILE_TYPE.WATER]: '#1c4f8c',
+      [TILE_TYPE.ROCK]: '#544c3e',
       [TILE_TYPE.GOLD]: '#4a4034',
       [TILE_TYPE.STEEL]: '#33363e',
     }[type];
@@ -839,9 +839,9 @@ export class Game {
     const [sx, sy] = this.camera.worldToScreen(b.x, b.y);
     const sizePx = b.size * TILE;
     if (sx + sizePx < 0 || sy + sizePx < 0 || sx > this.camera.width || sy > this.camera.height) return;
-    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
     ctx.beginPath();
-    ctx.ellipse(sx + sizePx / 2, sy + sizePx - 2, sizePx * 0.46, sizePx * 0.1, 0, 0, Math.PI * 2);
+    ctx.ellipse(sx + sizePx / 2, sy + sizePx - 2, sizePx * 0.5, sizePx * 0.12, 0, 0, Math.PI * 2);
     ctx.fill();
     drawBuilding(ctx, b.type, FACTIONS[b.faction], b.faction, sx, sy, sizePx, b.buildProgress, this.gameTime);
     if (b.selected) {
@@ -880,9 +880,9 @@ export class Game {
       return;
     }
 
-    ctx.fillStyle = 'rgba(0,0,0,0.32)';
+    ctx.fillStyle = 'rgba(0,0,0,0.42)';
     ctx.beginPath();
-    ctx.ellipse(sx, sy + drawSize * 0.4, drawSize * (u.role === 'legend' ? 0.44 : u.role === 'cavalry' ? 0.42 : u.role === 'siege' ? 0.4 : u.role === 'champion' ? 0.32 : 0.26), drawSize * 0.12, 0, 0, Math.PI * 2);
+    ctx.ellipse(sx, sy + drawSize * 0.4, drawSize * (u.role === 'legend' ? 0.44 : u.role === 'cavalry' ? 0.42 : u.role === 'siege' ? 0.4 : u.role === 'champion' ? 0.32 : 0.26), drawSize * 0.14, 0, 0, Math.PI * 2);
     ctx.fill();
     if (u.selected) {
       ctx.strokeStyle = '#f0e6a0'; ctx.lineWidth = 1.5;

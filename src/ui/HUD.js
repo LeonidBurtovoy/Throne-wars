@@ -220,10 +220,10 @@ export function initMinimap(game) {
 }
 
 const TERRAIN_COLORS = {
-  [TILE_TYPE.GRASS]: '#2f4a2a',
-  [TILE_TYPE.FOREST]: '#1f3a20',
-  [TILE_TYPE.WATER]: '#1a2a4a',
-  [TILE_TYPE.ROCK]: '#3a3630',
+  [TILE_TYPE.GRASS]: '#2c5626',
+  [TILE_TYPE.FOREST]: '#1a421c',
+  [TILE_TYPE.WATER]: '#1a4a80',
+  [TILE_TYPE.ROCK]: '#4a4335',
   [TILE_TYPE.GOLD]: '#8a7020',
   [TILE_TYPE.STEEL]: '#6a92a8',
 };

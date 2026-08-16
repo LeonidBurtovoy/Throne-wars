@@ -43,16 +43,18 @@ function shade(hex, amt) {
 function lighten(hex, amt) { return shade(hex, Math.abs(amt)); }
 function darkenColor(hex, amt) { return shade(hex, -Math.abs(amt)); }
 
-// Flat block -> lit-top/shadowed-bottom gradient plus a darker strip down the
-// right edge standing in for a side face turned away from the light.
+// Flat block -> lit-top/shadowed-bottom gradient plus a wide darker side
+// face down the right edge standing in for a plane turned away from the
+// light — bolder contrast and a wider face than before for a chunkier,
+// more clearly-3D silhouette at a glance (matches the buildings' treatment).
 function shadedBlock(ctx, x, y, w, h, baseColor) {
   const g = ctx.createLinearGradient(0, y, 0, y + h);
-  g.addColorStop(0, lighten(baseColor, 0.3));
-  g.addColorStop(1, darkenColor(baseColor, 0.3));
+  g.addColorStop(0, lighten(baseColor, 0.36));
+  g.addColorStop(1, darkenColor(baseColor, 0.38));
   ctx.fillStyle = g;
   ctx.fillRect(x, y, w, h);
-  const depth = Math.max(0.6, w * 0.16);
-  ctx.fillStyle = darkenColor(baseColor, 0.45);
+  const depth = Math.max(0.8, w * 0.24);
+  ctx.fillStyle = darkenColor(baseColor, 0.5);
   ctx.fillRect(x + w - depth, y, depth, h);
 }
 
@@ -138,14 +140,14 @@ function head(ctx, cy, r, skinColor) {
   g.addColorStop(1, darkenColor(skinColor, 0.2));
   ctx.fillStyle = g;
   ctx.beginPath(); ctx.arc(0, cy, r, 0, Math.PI * 2); ctx.fill();
-  ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 0.5; ctx.stroke();
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = 0.7; ctx.stroke();
   ctx.fillStyle = FIXED.outline;
   ctx.beginPath(); ctx.arc(1.1, cy - 0.2, 0.5, 0, Math.PI * 2); ctx.fill();
 }
 
-function outlineRect(ctx, x, y, w, h, color = 'rgba(0,0,0,0.32)') {
+function outlineRect(ctx, x, y, w, h, color = 'rgba(0,0,0,0.55)') {
   ctx.strokeStyle = color;
-  ctx.lineWidth = 0.5;
+  ctx.lineWidth = 0.8;
   ctx.strokeRect(x, y, w, h);
 }
 
@@ -682,25 +684,35 @@ function stoneTexture(ctx, x0, y0, w, h, seedBase) {
   }
 }
 
-// Fills a rect with a lit-top/shadowed-bottom gradient, adds a darker strip
-// down the right edge to read as a side face turned away from the light, a
-// thin highlight along the top edge, then outlines the whole block — the
-// single biggest lever for making a flat wall read as a beveled 3D block
-// instead of a plain vector rectangle.
-function outlinedRect(ctx, x, y, w, h, fillColor, outlineColor = 'rgba(10,8,6,0.55)', lineWidth = 1.4) {
+// Fills a rect with a lit-top/shadowed-bottom gradient, then a genuinely
+// wide side face down the right edge (with its own gradient, not a flat
+// tint) so the block reads as an actual extruded 3D box turned slightly
+// away from the light — a much stronger version of the old thin "depth
+// strip" — a bold dark outline, and a bright top-edge highlight. This is
+// the single biggest lever for the whole game's WC3-style chunky-3D look,
+// since every building wall/tower routes through this one function.
+function outlinedRect(ctx, x, y, w, h, fillColor, outlineColor = 'rgba(8,6,4,0.75)', lineWidth = 1.9) {
   const grad = ctx.createLinearGradient(0, y, 0, y + h);
-  grad.addColorStop(0, lighten(fillColor, 0.24));
-  grad.addColorStop(0.55, fillColor);
-  grad.addColorStop(1, darkenColor(fillColor, 0.32));
+  grad.addColorStop(0, lighten(fillColor, 0.34));
+  grad.addColorStop(0.5, fillColor);
+  grad.addColorStop(1, darkenColor(fillColor, 0.4));
   ctx.fillStyle = grad;
   ctx.fillRect(x, y, w, h);
 
-  const depth = Math.max(2, w * 0.14);
-  ctx.fillStyle = darkenColor(fillColor, 0.48);
+  // side face: wide enough to read as an actual second plane of the box,
+  // with its own top-lit/bottom-shadowed gradient instead of a flat tint
+  const depth = Math.max(4, w * 0.26);
+  const sideGrad = ctx.createLinearGradient(0, y, 0, y + h);
+  sideGrad.addColorStop(0, darkenColor(fillColor, 0.42));
+  sideGrad.addColorStop(1, darkenColor(fillColor, 0.6));
+  ctx.fillStyle = sideGrad;
   ctx.fillRect(x + w - depth, y, depth, h);
+  // seam between front and side faces — the crisp edge of the box corner
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(x + w - depth, y); ctx.lineTo(x + w - depth, y + h); ctx.stroke();
 
-  ctx.fillStyle = lighten(fillColor, 0.42);
-  ctx.fillRect(x, y, w, Math.max(1, h * 0.05));
+  ctx.fillStyle = lighten(fillColor, 0.5);
+  ctx.fillRect(x, y, w - depth, Math.max(1, h * 0.06));
 
   ctx.strokeStyle = outlineColor;
   ctx.lineWidth = lineWidth;
@@ -711,8 +723,8 @@ function outlinedRect(ctx, x, y, w, h, fillColor, outlineColor = 'rgba(10,8,6,0.
 // where the peak catches the light and the eaves sit in shadow.
 function roofGradient(ctx, yPeak, yBase, baseColor) {
   const g = ctx.createLinearGradient(0, yPeak, 0, yBase);
-  g.addColorStop(0, lighten(baseColor, 0.3));
-  g.addColorStop(1, darkenColor(baseColor, 0.32));
+  g.addColorStop(0, lighten(baseColor, 0.38));
+  g.addColorStop(1, darkenColor(baseColor, 0.4));
   return g;
 }
 

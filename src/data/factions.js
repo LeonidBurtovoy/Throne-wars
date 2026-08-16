@@ -4,8 +4,8 @@
 export const FACTIONS = {
   stark: {
     name: 'Дом Старков',
-    colorPrimary: '#7f93ab',
-    colorSecondary: '#e7edf3',
+    colorPrimary: '#4d6d95',
+    colorSecondary: '#eef5fb',
     unitNames: {
       worker: 'Смерд',
       melee: 'Латник Севера',
@@ -31,8 +31,8 @@ export const FACTIONS = {
   },
   targaryen: {
     name: 'Дом Таргариенов',
-    colorPrimary: '#8a1f1f',
-    colorSecondary: '#1a1a1a',
+    colorPrimary: '#a51d1d',
+    colorSecondary: '#1a1214',
     unitNames: {
       worker: 'Простолюдин',
       melee: 'Меч Драконьего Камня',
