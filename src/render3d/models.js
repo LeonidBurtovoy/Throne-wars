@@ -18,7 +18,7 @@ function stdMat(color, { roughness = 0.85, metalness = 0.05 } = {}) {
 }
 const METAL_FINISH = { roughness: 0.35, metalness: 0.75 };
 
-function box(w, h, d, color, matOpts) {
+export function box(w, h, d, color, matOpts) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), stdMat(color, matOpts));
   mesh.castShadow = true;
   mesh.receiveShadow = true;

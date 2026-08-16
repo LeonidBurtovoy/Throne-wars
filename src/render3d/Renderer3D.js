@@ -17,7 +17,7 @@
 // the "did the click land on the right tile" math.
 
 import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
-import { createUnitModel, createBuildingModel, createTreeModel, createGoldNodeModel, createSteelNodeModel, createCarryProp } from './models.js';
+import { createUnitModel, createBuildingModel, createTreeModel, createGoldNodeModel, createSteelNodeModel, createCarryProp, box } from './models.js';
 import { FACTIONS } from '../data/factions.js';
 
 const TERRAIN_COLOR = {
