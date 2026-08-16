@@ -17,7 +17,7 @@
 // the "did the click land on the right tile" math.
 
 import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
-import { createUnitModel, createBuildingModel, createTreeModel, createGoldNodeModel, createSteelNodeModel } from './models.js';
+import { createUnitModel, createBuildingModel, createTreeModel, createGoldNodeModel, createSteelNodeModel, createCarryProp } from './models.js';
 import { FACTIONS } from '../data/factions.js';
 
 const TERRAIN_COLOR = {
@@ -30,6 +30,14 @@ const TERRAIN_COLOR = {
 };
 const RESOURCE_TILE_TYPES = new Set([1, 4, 5]); // forest, gold, steel
 
+// Visual-only scale multipliers — bigger, more imposing models on screen
+// without touching gameplay math (collision radius, tile footprint,
+// pathfinding all stay exactly as Game.js computes them; only what gets
+// drawn is bigger).
+const UNIT_SCALE = 1.4;
+const BUILDING_SCALE = 1.25;
+const RESOURCE_SCALE = 1.3;
+
 export class Renderer3D {
   constructor(canvas, viewportWidth, viewportHeight) {
     this.canvas = canvas;
@@ -39,25 +47,38 @@ export class Renderer3D {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     this.renderer.setSize(viewportWidth, viewportHeight, false);
     this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap; // softer, less jagged shadow edges
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color('#05050a');
+    this.scene.background = new THREE.Color('#0a0a12');
+    // atmospheric depth: distant terrain fades toward the background color
+    // instead of every tile reading at full contrast regardless of distance
+    this.scene.fog = new THREE.Fog('#0a0a12', 900, 2600);
 
     const halfW = viewportWidth / 2, halfH = viewportHeight / 2;
     this.camera = new THREE.OrthographicCamera(-halfW, halfW, halfH * 1.35, -halfH * 1.35, 1, 4000);
     this._elevRad = THREE.MathUtils.degToRad(55);
     this._camDist = 1200;
 
-    this.scene.add(new THREE.AmbientLight('#8a90a0', 0.65));
-    const sun = new THREE.DirectionalLight('#fff3d8', 1.1);
-    sun.position.set(-400, 600, -300);
+    // sky/ground bounce light instead of flat ambient — reads as real
+    // outdoor daylight rather than a uniform grey fill
+    this.scene.add(new THREE.HemisphereLight('#bcd4f2', '#2a2418', 0.55));
+    // the sun: repositioned every frame in _updateCamera to follow the
+    // camera's look-at target, so its shadow frustum always covers the
+    // currently-visible ground instead of only the area near world origin
+    // (which would leave most of a large map permanently unshadowed)
+    const sun = new THREE.DirectionalLight('#fff3d8', 1.6);
     sun.castShadow = true;
-    sun.shadow.camera.left = -800; sun.shadow.camera.right = 800;
-    sun.shadow.camera.top = 800; sun.shadow.camera.bottom = -800;
-    sun.shadow.camera.far = 2000;
-    sun.shadow.mapSize.set(1024, 1024);
+    sun.shadow.camera.left = -900; sun.shadow.camera.right = 900;
+    sun.shadow.camera.top = 900; sun.shadow.camera.bottom = -900;
+    sun.shadow.camera.near = 10;
+    sun.shadow.camera.far = 2200;
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.bias = -0.0015;
     this.scene.add(sun);
     this.scene.add(sun.target);
+    this.sun = sun;
 
     this._raycaster = new THREE.Raycaster();
     this._groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -148,8 +169,9 @@ export class Renderer3D {
       if (!entry) {
         const faction = FACTIONS[u.faction];
         const model = createUnitModel(u.role, faction, u.faction);
+        model.scale.setScalar(UNIT_SCALE);
         const ring = new THREE.Mesh(
-          new THREE.RingGeometry(9, 11, 16),
+          new THREE.RingGeometry(9 * UNIT_SCALE, 11 * UNIT_SCALE, 16),
           new THREE.MeshBasicMaterial({ color: '#f0e6a0', side: THREE.DoubleSide, transparent: true, opacity: 0.85 })
         );
         ring.rotation.x = -Math.PI / 2;
@@ -170,6 +192,22 @@ export class Renderer3D {
       }
       entry.ring.visible = !!u.selected;
       entry.group.visible = true;
+
+      // what the worker is hauling — a prop on their back, swapped in/out
+      // as gathering starts/stops or the resource type changes
+      if (u.carrying) {
+        if (!entry.carryProp || entry.carryType !== u.carrying.type) {
+          if (entry.carryProp) entry.model.remove(entry.carryProp);
+          const prop = createCarryProp(u.carrying.type);
+          prop.position.set(-4.5, (entry.model.userData.torsoTopY || 10) - 1, 0);
+          entry.model.add(prop);
+          entry.carryProp = prop;
+          entry.carryType = u.carrying.type;
+        }
+        entry.carryProp.visible = true;
+      } else if (entry.carryProp) {
+        entry.carryProp.visible = false;
+      }
     }
     for (const [id, entry] of this._unitMeshes) {
       if (seen.has(id)) continue;
@@ -188,7 +226,10 @@ export class Renderer3D {
       let entry = this._buildingMeshes.get(b.id);
       if (!entry) {
         const faction = FACTIONS[b.faction];
-        const footprintPx = b.size * game.tileSize;
+        // BUILDING_SCALE inflates the visual footprint only — the real
+        // gameplay footprint (b.size * tileSize, used for collision/
+        // placement) is untouched, this just makes the model/ring bigger
+        const footprintPx = b.size * game.tileSize * BUILDING_SCALE;
         const model = createBuildingModel(b.type, faction, b.faction, footprintPx);
         const ring = new THREE.Mesh(
           new THREE.RingGeometry(footprintPx * 0.55, footprintPx * 0.6, 24),
@@ -197,11 +238,25 @@ export class Renderer3D {
         ring.rotation.x = -Math.PI / 2;
         ring.position.y = 0.5;
         ring.visible = false;
+        // training/research progress bar — floats above the building,
+        // tilted at a fixed angle to face the (also fixed-angle) camera.
+        // Left-anchored fill: the bar geometry itself never resizes, only
+        // its scale + a matching position offset, so it depletes/fills
+        // from a fixed left edge instead of shrinking from both sides.
+        const barWidth = footprintPx * 0.7;
+        const barBg = box(barWidth, 3, 1.2, '#161412', { roughness: 1 });
+        const barFill = box(barWidth, 2.2, 1.6, '#d8b23a', { roughness: 0.6 });
+        const bar = new THREE.Group();
+        bar.add(barBg);
+        bar.add(barFill);
+        bar.rotation.x = -0.85;
+        bar.visible = false;
         const group = new THREE.Group();
         group.add(model);
         group.add(ring);
+        group.add(bar);
         this.scene.add(group);
-        entry = { group, model, ring };
+        entry = { group, model, ring, bar, barFill, barWidth };
         this._buildingMeshes.set(b.id, entry);
       }
       entry.group.position.set(b.centerX, 0, b.centerY);
@@ -211,6 +266,26 @@ export class Renderer3D {
       // farm windmill blades — spins whether the farm is complete or not,
       // same simple time-based rotation the old 2D windmill used
       if (entry.model.userData.spinner) entry.model.userData.spinner.rotation.z = game.gameTime * 1.4;
+
+      let barPct = null, barColor = null;
+      if (b.trainQueue && b.trainQueue.length > 0) {
+        const job = b.trainQueue[0];
+        barPct = 1 - job.timeLeft / job.totalTime;
+        barColor = '#d8b23a';
+      } else if (b.researching) {
+        barPct = 1 - b.researching.timeLeft / b.researching.totalTime;
+        barColor = '#7ac6e0';
+      }
+      if (barPct !== null && b.complete) {
+        entry.bar.visible = true;
+        entry.bar.position.y = (entry.model.userData.roofTopY || 20) + 8;
+        const pct = Math.max(0.03, Math.min(1, barPct));
+        entry.barFill.scale.x = pct;
+        entry.barFill.position.x = -(entry.barWidth / 2) * (1 - pct);
+        entry.barFill.material.color.set(barColor);
+      } else {
+        entry.bar.visible = false;
+      }
     }
     for (const [id, entry] of this._buildingMeshes) {
       if (seen.has(id)) continue;
@@ -241,6 +316,7 @@ export class Renderer3D {
         if (!entry) {
           const seed = tx * 7 + ty * 13;
           const model = type === 1 ? createTreeModel(seed) : type === 4 ? createGoldNodeModel() : createSteelNodeModel();
+          model.scale.setScalar(RESOURCE_SCALE);
           model.position.set(tx * TILE + TILE / 2, 0, ty * TILE + TILE / 2);
           this.scene.add(model);
           entry = { model, type };
@@ -276,18 +352,22 @@ export class Renderer3D {
       return;
     }
     const { type, size, tx, ty, valid } = game.buildPlacementMode;
-    const footprintPx = size * game.tileSize;
+    // realFootprintPx positions the ghost on the actual tile grid it will
+    // occupy; the model itself is built at the same inflated BUILDING_SCALE
+    // size as a real placed building, so the preview matches what you get
+    const realFootprintPx = size * game.tileSize;
+    const visualFootprintPx = realFootprintPx * BUILDING_SCALE;
     if (!this._placementGhost || this._placementGhost.userData.type !== type) {
       if (this._placementGhost) this.scene.remove(this._placementGhost);
       const faction = FACTIONS[game.playerFaction];
-      const model = createBuildingModel(type, faction, game.playerFaction, footprintPx);
+      const model = createBuildingModel(type, faction, game.playerFaction, visualFootprintPx);
       model.traverse((o) => { if (o.material) { o.material = o.material.clone(); o.material.transparent = true; o.material.opacity = 0.55; } });
       model.userData.type = type;
       this._placementGhost = model;
       this.scene.add(model);
     }
     this._placementGhost.visible = true;
-    this._placementGhost.position.set(tx * game.tileSize + footprintPx / 2, 0, ty * game.tileSize + footprintPx / 2);
+    this._placementGhost.position.set(tx * game.tileSize + realFootprintPx / 2, 0, ty * game.tileSize + realFootprintPx / 2);
     this._placementGhost.traverse((o) => {
       if (o.material && o.material.color) o.material.color.set(valid ? '#3ab03a' : '#b03a3a');
     });
@@ -302,6 +382,12 @@ export class Renderer3D {
     this.camera.position.set(targetX, this._camDist * sinE, targetZ + this._camDist * cosE);
     this.camera.lookAt(targetX, 0, targetZ);
     this.camera.updateProjectionMatrix();
+
+    // the sun (and its shadow frustum) follows the same look-at point so
+    // shadows stay correct anywhere on the map, not just near world origin
+    this.sun.position.set(targetX - 400, 600, targetZ - 300);
+    this.sun.target.position.set(targetX, 0, targetZ);
+    this.sun.target.updateMatrixWorld();
   }
 
   // ---------------- main entry point, called once per frame from main.js ----------------

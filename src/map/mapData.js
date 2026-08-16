@@ -84,48 +84,52 @@ function placeRectPatch(tiles, w, h, x0, y0, x1, y1, type) {
 function cornerStarts(width, height, inset) {
   return [
     { x: inset, y: inset },
-    { x: width - inset - 3, y: inset },
-    { x: inset, y: height - inset - 3 },
-    { x: width - inset - 3, y: height - inset - 3 },
+    { x: width - inset - 4, y: inset },
+    { x: inset, y: height - inset - 4 },
+    { x: width - inset - 4, y: height - inset - 4 },
   ];
 }
 
+// All four maps sized up ~25% from their previous dimensions (bigger
+// strongholds and bigger units need more room to actually feel bigger
+// instead of just crowding the same footprint).
+
 function generateMap1() {
-  const width = 52, height = 38;
+  const width = 66, height = 48;
   const tiles = buildBase(width, height);
 
   // through the mirror-pair helper, not a bare circlePatch — the map's
   // dimensions are even, so no tile is exactly its own mirror
-  placeWaterPatch(tiles, width, height, Math.floor(width / 2), Math.floor(height / 2), 6);
+  placeWaterPatch(tiles, width, height, Math.floor(width / 2), Math.floor(height / 2), 8);
 
   // top-left seed (auto-mirrors to bottom-right)
-  placeGoldCluster(tiles, width, height, 10, 4);
-  placeGoldCluster(tiles, width, height, 13, 9);
-  placeForestPatch(tiles, width, height, 4, 12, 2);
-  placeForestPatch(tiles, width, height, 13, 7, 2);
-  placeForestPatch(tiles, width, height, 6, 18, 3);
+  placeGoldCluster(tiles, width, height, 13, 5);
+  placeGoldCluster(tiles, width, height, 17, 11);
+  placeForestPatch(tiles, width, height, 5, 15, 3);
+  placeForestPatch(tiles, width, height, 17, 9, 3);
+  placeForestPatch(tiles, width, height, 8, 23, 4);
 
   // top-right seed (auto-mirrors to bottom-left)
-  placeGoldCluster(tiles, width, height, 38, 4);
-  placeGoldCluster(tiles, width, height, 35, 9);
-  placeForestPatch(tiles, width, height, 45, 12, 2);
-  placeForestPatch(tiles, width, height, 36, 7, 2);
+  placeGoldCluster(tiles, width, height, 48, 5);
+  placeGoldCluster(tiles, width, height, 44, 11);
+  placeForestPatch(tiles, width, height, 57, 15, 3);
+  placeForestPatch(tiles, width, height, 46, 9, 3);
 
   // rare Valyrian-steel veins, scattered across contested no-man's-land
   // between the corner bases rather than tucked next to anyone's start
-  placeSteelVein(tiles, width, height, 14, 19);
-  placeSteelVein(tiles, width, height, 26, 8);
+  placeSteelVein(tiles, width, height, 18, 24);
+  placeSteelVein(tiles, width, height, 33, 10);
 
   const map = new TileMap(width, height, tiles);
   return {
     map,
-    starts: cornerStarts(width, height, 3),
+    starts: cornerStarts(width, height, 4),
     name: 'Речные земли',
   };
 }
 
 function generateMap2() {
-  const width = 64, height = 46;
+  const width = 80, height = 58;
   const tiles = buildBase(width, height);
 
   // through the mirror-pair helper, not a bare fillRect — same even-
@@ -135,27 +139,27 @@ function generateMap2() {
   placeRectPatch(tiles, width, height, midX - 1, Math.floor(height / 2) - 3, midX + 1, Math.floor(height / 2) + 3, TILE_TYPE.GRASS);
 
   // top-left seed (auto-mirrors to bottom-right)
-  placeGoldCluster(tiles, width, height, 10, 4);
-  placeGoldCluster(tiles, width, height, 13, 11);
-  placeForestPatch(tiles, width, height, 4, 12, 2);
-  placeForestPatch(tiles, width, height, 5, 17, 3);
-  placeForestPatch(tiles, width, height, 17, 15, 2);
+  placeGoldCluster(tiles, width, height, 13, 5);
+  placeGoldCluster(tiles, width, height, 16, 14);
+  placeForestPatch(tiles, width, height, 5, 15, 3);
+  placeForestPatch(tiles, width, height, 6, 21, 4);
+  placeForestPatch(tiles, width, height, 21, 19, 3);
 
   // top-right seed (auto-mirrors to bottom-left)
-  placeGoldCluster(tiles, width, height, 46, 5);
-  placeGoldCluster(tiles, width, height, 43, 12);
-  placeForestPatch(tiles, width, height, 40, 10, 2);
-  placeForestPatch(tiles, width, height, 52, 16, 2);
+  placeGoldCluster(tiles, width, height, 58, 6);
+  placeGoldCluster(tiles, width, height, 54, 15);
+  placeForestPatch(tiles, width, height, 50, 13, 3);
+  placeForestPatch(tiles, width, height, 65, 20, 3);
 
   // rare Valyrian-steel veins, one pocket on each side of the central
   // mountain pass so both flanks have something worth fighting over
-  placeSteelVein(tiles, width, height, 18, 23);
-  placeSteelVein(tiles, width, height, 9, 30);
+  placeSteelVein(tiles, width, height, 23, 29);
+  placeSteelVein(tiles, width, height, 11, 38);
 
   const map = new TileMap(width, height, tiles);
   return {
     map,
-    starts: cornerStarts(width, height, 3),
+    starts: cornerStarts(width, height, 4),
     name: 'Пепельный перевал',
   };
 }
@@ -165,41 +169,41 @@ function generateMap2() {
 // richest map (extra gold clusters, extra steel veins) to reward players who
 // contest the open middle instead of turtling in a corner.
 function generateMap3() {
-  const width = 56, height = 42;
+  const width = 70, height = 52;
   const tiles = buildBase(width, height);
 
   // the "central" lake also goes through the mirror helper — an even-sized
   // map has no tile that is exactly its own mirror, so a single bare
   // circlePatch here would land slightly off-center and break symmetry
-  placeWaterPatch(tiles, width, height, Math.floor(width / 2), Math.floor(height / 2), 5);
-  placeWaterPatch(tiles, width, height, 16, 12, 3);
-  placeWaterPatch(tiles, width, height, 38, 13, 3);
+  placeWaterPatch(tiles, width, height, Math.floor(width / 2), Math.floor(height / 2), 6);
+  placeWaterPatch(tiles, width, height, 20, 15, 4);
+  placeWaterPatch(tiles, width, height, 48, 16, 4);
 
   // top-left seed (auto-mirrors to bottom-right)
-  placeGoldCluster(tiles, width, height, 9, 4);
-  placeGoldCluster(tiles, width, height, 12, 10);
-  placeForestPatch(tiles, width, height, 4, 13, 2);
-  placeForestPatch(tiles, width, height, 14, 6, 2);
-  placeForestPatch(tiles, width, height, 5, 19, 3);
+  placeGoldCluster(tiles, width, height, 11, 5);
+  placeGoldCluster(tiles, width, height, 15, 13);
+  placeForestPatch(tiles, width, height, 5, 16, 3);
+  placeForestPatch(tiles, width, height, 18, 8, 3);
+  placeForestPatch(tiles, width, height, 6, 24, 4);
 
   // top-right seed (auto-mirrors to bottom-left)
-  placeGoldCluster(tiles, width, height, 45, 4);
-  placeGoldCluster(tiles, width, height, 42, 10);
-  placeForestPatch(tiles, width, height, 50, 13, 2);
-  placeForestPatch(tiles, width, height, 40, 6, 2);
+  placeGoldCluster(tiles, width, height, 56, 5);
+  placeGoldCluster(tiles, width, height, 53, 13);
+  placeForestPatch(tiles, width, height, 63, 16, 3);
+  placeForestPatch(tiles, width, height, 50, 8, 3);
 
   // extra gold out in the open middle ground — worth fighting over
-  placeGoldCluster(tiles, width, height, 24, 30);
+  placeGoldCluster(tiles, width, height, 30, 38);
 
   // richest map for Valyrian steel too — three veins per side
-  placeSteelVein(tiles, width, height, 10, 24);
-  placeSteelVein(tiles, width, height, 28, 6);
-  placeSteelVein(tiles, width, height, 46, 20);
+  placeSteelVein(tiles, width, height, 13, 30);
+  placeSteelVein(tiles, width, height, 35, 8);
+  placeSteelVein(tiles, width, height, 58, 25);
 
   const map = new TileMap(width, height, tiles);
   return {
     map,
-    starts: cornerStarts(width, height, 3),
+    starts: cornerStarts(width, height, 4),
     name: 'Королевский тракт',
   };
 }
@@ -209,7 +213,7 @@ function generateMap3() {
 // sliver of open ground at the very top/bottom edges; this one is fully
 // sealed edge-to-edge, so the causeway is the *only* way across).
 function generateMap4() {
-  const width = 58, height = 40;
+  const width = 72, height = 50;
   const tiles = buildBase(width, height);
 
   const midX = Math.floor(width / 2);
@@ -221,29 +225,29 @@ function generateMap4() {
   placeRectPatch(tiles, width, height, midX - 2, midY - 3, midX + 2, midY + 3, TILE_TYPE.GRASS);
 
   // top-left seed (auto-mirrors to bottom-right)
-  placeGoldCluster(tiles, width, height, 9, 4);
-  placeGoldCluster(tiles, width, height, 12, 10);
-  placeForestPatch(tiles, width, height, 4, 13, 2);
-  placeForestPatch(tiles, width, height, 14, 7, 2);
-  placeForestPatch(tiles, width, height, 6, 19, 3);
+  placeGoldCluster(tiles, width, height, 11, 5);
+  placeGoldCluster(tiles, width, height, 15, 13);
+  placeForestPatch(tiles, width, height, 5, 16, 3);
+  placeForestPatch(tiles, width, height, 17, 9, 3);
+  placeForestPatch(tiles, width, height, 7, 24, 4);
 
   // top-right seed (auto-mirrors to bottom-left)
-  placeGoldCluster(tiles, width, height, 47, 4);
-  placeGoldCluster(tiles, width, height, 44, 10);
-  placeForestPatch(tiles, width, height, 52, 13, 2);
-  placeForestPatch(tiles, width, height, 42, 7, 2);
+  placeGoldCluster(tiles, width, height, 58, 5);
+  placeGoldCluster(tiles, width, height, 54, 13);
+  placeForestPatch(tiles, width, height, 65, 16, 3);
+  placeForestPatch(tiles, width, height, 52, 9, 3);
 
   // steel sits right next to the causeway on both sides — controlling the
   // Neck means controlling the map's whole steel supply. The two seeds must
   // not be mirror images of each other, or the second call just re-draws
   // the first pair's tiles instead of adding two new ones.
-  placeSteelVein(tiles, width, height, midX - 8, midY - 8);
-  placeSteelVein(tiles, width, height, midX - 8, midY + 8);
+  placeSteelVein(tiles, width, height, midX - 10, midY - 10);
+  placeSteelVein(tiles, width, height, midX - 10, midY + 10);
 
   const map = new TileMap(width, height, tiles);
   return {
     map,
-    starts: cornerStarts(width, height, 3),
+    starts: cornerStarts(width, height, 4),
     name: 'Перешеек',
   };
 }

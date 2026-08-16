@@ -120,8 +120,8 @@ export const UNIT_STATS = {
 
 export const BUILDING_STATS = {
   townhall: {
-    hp: 1200, size: 3, buildTime: 60, cost: { gold: 0, wood: 0 }, // pre-placed at game start
-    trains: ['worker'], sight: 6, isDropoff: true, armor: 4,
+    hp: 1400, size: 4, buildTime: 60, cost: { gold: 0, wood: 0 }, // pre-placed at game start
+    trains: ['worker'], sight: 7, isDropoff: true, armor: 4,
     description: 'Главное здание: готовит рабочих, принимает добытые ресурсы. Поражение при его потере без других зданий.',
   },
   farm: {

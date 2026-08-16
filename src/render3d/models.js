@@ -10,28 +10,36 @@
 
 import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
 
-function box(w, h, d, color) {
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshLambertMaterial({ color }));
+// MeshStandardMaterial (PBR-ish roughness/metalness) instead of Lambert —
+// responds to light much more realistically, and lets metal props (swords,
+// anvils, wheels) actually read as metal instead of flat-colored plastic.
+function stdMat(color, { roughness = 0.85, metalness = 0.05 } = {}) {
+  return new THREE.MeshStandardMaterial({ color, roughness, metalness });
+}
+const METAL_FINISH = { roughness: 0.35, metalness: 0.75 };
+
+function box(w, h, d, color, matOpts) {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), stdMat(color, matOpts));
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   return mesh;
 }
 
-function cyl(rTop, rBottom, h, color, segments = 10) {
-  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(rTop, rBottom, h, segments), new THREE.MeshLambertMaterial({ color }));
+function cyl(rTop, rBottom, h, color, segments = 10, matOpts) {
+  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(rTop, rBottom, h, segments), stdMat(color, matOpts));
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   return mesh;
 }
 
-function cone(r, h, color, segments = 4) {
-  const mesh = new THREE.Mesh(new THREE.ConeGeometry(r, h, segments), new THREE.MeshLambertMaterial({ color }));
+function cone(r, h, color, segments = 4, matOpts) {
+  const mesh = new THREE.Mesh(new THREE.ConeGeometry(r, h, segments), stdMat(color, matOpts));
   mesh.castShadow = true;
   return mesh;
 }
 
-function ball(r, color) {
-  const mesh = new THREE.Mesh(new THREE.SphereGeometry(r, 8, 8), new THREE.MeshLambertMaterial({ color }));
+function ball(r, color, matOpts) {
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(r, 10, 10), stdMat(color, matOpts));
   mesh.castShadow = true;
   return mesh;
 }
@@ -85,7 +93,7 @@ function createWorkerModel(faction) {
   handle.rotation.z = 0.9;
   handle.position.set(6, 9, 0);
   g.add(handle);
-  const head2 = box(1.4, 1.4, 3.2, METAL_DARK);
+  const head2 = box(1.4, 1.4, 3.2, METAL_DARK, METAL_FINISH);
   head2.position.set(9, 12, 0);
   g.add(head2);
   return g;
@@ -93,11 +101,11 @@ function createWorkerModel(faction) {
 
 function createMeleeModel(faction) {
   const g = humanoid({ legColor: '#2a2620', bodyW: 11, bodyH: 18, bodyD: 8, bodyColor: faction.colorPrimary, headColor: SKIN, headR: 3.6 });
-  const shield = new THREE.Mesh(new THREE.CylinderGeometry(3.6, 3.6, 1, 12), new THREE.MeshLambertMaterial({ color: faction.colorSecondary }));
+  const shield = new THREE.Mesh(new THREE.CylinderGeometry(3.6, 3.6, 1, 12), new THREE.MeshStandardMaterial({ color: faction.colorSecondary }));
   shield.rotation.z = Math.PI / 2;
   shield.position.set(-6, 11, 0);
   g.add(shield);
-  const sword = box(1, 9, 1, METAL);
+  const sword = box(1, 9, 1, METAL, METAL_FINISH);
   sword.position.set(7, 12, 0);
   sword.rotation.z = -0.3;
   g.add(sword);
@@ -110,7 +118,7 @@ function createRangedModel(faction) {
   quiver.rotation.z = 0.3;
   quiver.position.set(-4, 12, 3);
   g.add(quiver);
-  const bow = new THREE.Mesh(new THREE.TorusGeometry(4.2, 0.35, 6, 10, Math.PI * 1.2), new THREE.MeshLambertMaterial({ color: WOOD }));
+  const bow = new THREE.Mesh(new THREE.TorusGeometry(4.2, 0.35, 6, 10, Math.PI * 1.2), new THREE.MeshStandardMaterial({ color: WOOD }));
   bow.rotation.y = Math.PI / 2;
   bow.position.set(6, 10, 0);
   g.add(bow);
@@ -120,14 +128,14 @@ function createRangedModel(faction) {
 function createChampionModel(faction) {
   const g = humanoid({ legColor: '#2a2620', bodyW: 14, bodyH: 22, bodyD: 10, bodyColor: faction.colorPrimary, headColor: SKIN, headR: 4 });
   for (const side of [-1, 1]) {
-    const pauldron = ball(2.6, METAL);
+    const pauldron = ball(2.6, METAL, METAL_FINISH);
     pauldron.position.set(side * 7.5, g.userData.torsoTopY - 1.5, 0);
     g.add(pauldron);
   }
   const plume = cone(1.2, 4, faction.colorSecondary, 8);
   plume.position.set(0, g.userData.torsoTopY + 8.5, -1);
   g.add(plume);
-  const greatsword = box(1.6, 13, 1.6, METAL);
+  const greatsword = box(1.6, 13, 1.6, METAL, METAL_FINISH);
   greatsword.position.set(8, g.userData.torsoTopY + 2, 0);
   greatsword.rotation.z = -0.15;
   g.add(greatsword);
@@ -164,7 +172,7 @@ function createCavalryModel(faction) {
   lance.rotation.x = Math.PI / 2;
   lance.rotation.z = -0.15;
   g.add(lance);
-  const pennant = new THREE.Mesh(new THREE.BoxGeometry(4, 3, 0.2), new THREE.MeshLambertMaterial({ color: faction.colorSecondary, side: THREE.DoubleSide }));
+  const pennant = new THREE.Mesh(new THREE.BoxGeometry(4, 3, 0.2), new THREE.MeshStandardMaterial({ color: faction.colorSecondary, side: THREE.DoubleSide }));
   pennant.position.set(9, 21, -6);
   g.add(pennant);
   return g;
@@ -176,7 +184,7 @@ function createSiegeModel() {
   wagon.position.y = 4;
   g.add(wagon);
   for (const wz of [-8.5, 8.5]) {
-    const wheel = cyl(4, 4, 2, METAL_DARK, 10);
+    const wheel = cyl(4, 4, 2, METAL_DARK, 10, METAL_FINISH);
     wheel.rotation.x = Math.PI / 2;
     wheel.position.set(0, 4, wz);
     g.add(wheel);
@@ -265,7 +273,7 @@ function createDragonModel(faction) {
   fire.position.set(30, 17, 0);
   g.add(fire);
   for (const wz of [1, -1]) {
-    const wing = new THREE.Mesh(new THREE.BoxGeometry(20, 1, 14), new THREE.MeshLambertMaterial({ color: dark, side: THREE.DoubleSide }));
+    const wing = new THREE.Mesh(new THREE.BoxGeometry(20, 1, 14), new THREE.MeshStandardMaterial({ color: dark, side: THREE.DoubleSide }));
     wing.position.set(-2, 19, wz * 9);
     wing.rotation.z = 0.35;
     wing.rotation.y = wz * 0.35;
@@ -385,7 +393,7 @@ function createTownhallDragonstone(faction, footprintPx) {
   const dark = '#241417';
   const rock = new THREE.Mesh(
     new THREE.IcosahedronGeometry(footprintPx * 0.56, 0),
-    new THREE.MeshLambertMaterial({ color: '#1a1214', flatShading: true })
+    new THREE.MeshStandardMaterial({ color: '#1a1214', flatShading: true })
   );
   rock.scale.set(1.15, 0.42, 1.1);
   rock.position.y = footprintPx * 0.12;
@@ -402,7 +410,7 @@ function createTownhallDragonstone(faction, footprintPx) {
     const a = (i / 5) * Math.PI * 2;
     const wing = new THREE.Mesh(
       new THREE.BoxGeometry(footprintPx * 0.18, 1, footprintPx * 0.06),
-      new THREE.MeshLambertMaterial({ color: dark, side: THREE.DoubleSide })
+      new THREE.MeshStandardMaterial({ color: dark, side: THREE.DoubleSide })
     );
     wing.position.set(Math.cos(a) * footprintPx * 0.22, baseY + 14, Math.sin(a) * footprintPx * 0.22);
     wing.rotation.y = a;
@@ -447,7 +455,7 @@ function createFarm(faction, factionKey, footprintPx) {
   const fieldSize = footprintPx * 1.5;
   const field = new THREE.Mesh(
     new THREE.PlaneGeometry(fieldSize, fieldSize),
-    new THREE.MeshLambertMaterial({ color: '#5a4a2a', side: THREE.DoubleSide })
+    new THREE.MeshStandardMaterial({ color: '#5a4a2a', side: THREE.DoubleSide })
   );
   field.rotation.x = -Math.PI / 2;
   field.position.y = 0.15;
@@ -528,7 +536,7 @@ function createStable(faction, factionKey, footprintPx) {
   }
   // Targaryen: dragon den — an irregular rocky mound instead of a wall+roof
   const g = new THREE.Group();
-  const mound = new THREE.Mesh(new THREE.IcosahedronGeometry(footprintPx * 0.52, 0), new THREE.MeshLambertMaterial({ color: '#2a1c1c', flatShading: true }));
+  const mound = new THREE.Mesh(new THREE.IcosahedronGeometry(footprintPx * 0.52, 0), new THREE.MeshStandardMaterial({ color: '#2a1c1c', flatShading: true }));
   mound.scale.set(1, 0.6, 1);
   mound.position.y = footprintPx * 0.28;
   mound.castShadow = true;
@@ -566,7 +574,7 @@ function createForge(faction, factionKey, footprintPx) {
   const chimney = box(3, 14, 3, '#2a2622');
   chimney.position.set(footprintPx * 0.28, 27, 0);
   g.add(chimney);
-  const anvil = box(6, 4, 3, METAL_DARK);
+  const anvil = box(6, 4, 3, METAL_DARK, METAL_FINISH);
   anvil.position.set(-footprintPx * 0.25, 2, footprintPx * 0.25);
   g.add(anvil);
   const glow = ember(1.6);
@@ -581,7 +589,7 @@ function createWorkshop(faction, factionKey, footprintPx) {
   const crate = box(6, 6, 6, WOOD_LIGHT);
   crate.position.set(-footprintPx * 0.3, 3, footprintPx * 0.25);
   g.add(crate);
-  const wheel = new THREE.Mesh(new THREE.TorusGeometry(4, 0.7, 6, 10), new THREE.MeshLambertMaterial({ color: METAL_DARK }));
+  const wheel = new THREE.Mesh(new THREE.TorusGeometry(4, 0.7, 6, 10), stdMat(METAL_DARK, METAL_FINISH));
   wheel.rotation.y = 0.3;
   wheel.position.set(footprintPx * 0.3, 4, -footprintPx * 0.25);
   g.add(wheel);
@@ -592,7 +600,7 @@ function createTemple(faction, factionKey, footprintPx) {
   const isStark = factionKey !== 'targaryen';
   const stone = isStark ? '#8a8f9a' : '#4a2c3a';
   const g = baseWallAndRoof(footprintPx, 24, stone, isStark ? '#c9d3da' : '#6a2540', 0.24);
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(footprintPx * 0.16, 0.8, 8, 16), new THREE.MeshLambertMaterial({ color: isStark ? '#e7edf3' : '#e2622a' }));
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(footprintPx * 0.16, 0.8, 8, 16), new THREE.MeshStandardMaterial({ color: isStark ? '#e7edf3' : '#e2622a' }));
   ring.position.set(0, 14, footprintPx * 0.44);
   g.add(ring);
   if (!isStark) { const f = ember(1.8); f.position.y = g.userData.roofTopY + 1; g.add(f); }
@@ -660,7 +668,7 @@ function oreOutcrop(rockColor, nuggetColor, glowColor, nuggetGeo) {
   const g = new THREE.Group();
   const rock = new THREE.Mesh(
     new THREE.IcosahedronGeometry(5, 0),
-    new THREE.MeshLambertMaterial({ color: rockColor, flatShading: true })
+    new THREE.MeshStandardMaterial({ color: rockColor, flatShading: true })
   );
   rock.scale.set(1.15, 0.52, 1.05);
   rock.position.y = 2.1;
@@ -668,7 +676,7 @@ function oreOutcrop(rockColor, nuggetColor, glowColor, nuggetGeo) {
   g.add(rock);
   const nuggets = [[1.6, 0.5, 1.5], [-1.3, 1.3, 1.2], [0.3, -1.7, 1.35], [-1.6, -0.7, 1.05]];
   for (const [nx, nz, nr] of nuggets) {
-    const nugget = new THREE.Mesh(nuggetGeo(nr), new THREE.MeshLambertMaterial({ color: nuggetColor, flatShading: true }));
+    const nugget = new THREE.Mesh(nuggetGeo(nr), new THREE.MeshStandardMaterial({ color: nuggetColor, flatShading: true }));
     nugget.position.set(nx, 3.3 + nr * 0.35, nz);
     nugget.rotation.set(nx, nz, nr);
     nugget.castShadow = true;
@@ -686,4 +694,33 @@ export function createGoldNodeModel() {
 
 export function createSteelNodeModel() {
   return oreOutcrop('#33363e', '#9fc0d4', '#eef6fb', (r) => new THREE.OctahedronGeometry(r, 0));
+}
+
+// ---------------- carried resource (attached to a gathering worker) ----------------
+
+// what a worker visibly carries while gathering — a log bundle on the back
+// for wood, an ore chunk for steel, a bulging sack for gold — so you can
+// tell what someone's hauling at a glance, same as the old 2D version's
+// carried-resource icon but as an actual prop on the model.
+export function createCarryProp(type) {
+  if (type === 'wood') {
+    const g = new THREE.Group();
+    for (let i = 0; i < 3; i++) {
+      const log = cyl(0.7, 0.7, 6, WOOD, 6);
+      log.rotation.z = Math.PI / 2;
+      log.position.set(0, i * 1.2 - 1.2, 0);
+      g.add(log);
+    }
+    return g;
+  }
+  if (type === 'steel') {
+    const chunk = new THREE.Mesh(new THREE.OctahedronGeometry(1.8, 0), stdMat('#9fc0d4', { roughness: 0.3, metalness: 0.6 }));
+    chunk.castShadow = true;
+    return chunk;
+  }
+  // gold — a bulging sack
+  const sack = new THREE.Mesh(new THREE.SphereGeometry(1.9, 8, 8), stdMat('#8a6a3a', { roughness: 0.95 }));
+  sack.scale.set(1, 1.25, 1);
+  sack.castShadow = true;
+  return sack;
 }
