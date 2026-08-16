@@ -17,8 +17,9 @@
 // the "did the click land on the right tile" math.
 
 import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
-import { createUnitModel, createBuildingModel, createTreeModel, createGoldNodeModel, createSteelNodeModel, createCarryProp, box } from './models.js';
+import { createUnitModel, createBuildingModel, createTreeModel, createGoldNodeModel, createSteelNodeModel, createCarryProp, createGrassTuft, createRockDetail, box } from './models.js';
 import { FACTIONS } from '../data/factions.js';
+import { TILE_TYPE } from '../config.js';
 
 const TERRAIN_COLOR = {
   0: '#2f5c28', // grass
@@ -31,6 +32,16 @@ const TERRAIN_COLOR = {
 const RESOURCE_TILE_TYPES = new Set([1, 4, 5]); // forest, gold, steel
 const MOVING_STATES = new Set(['moving', 'attack-move', 'moving-to-gather', 'moving-to-build', 'returning-to-drop']);
 const WORKING_STATES = new Set(['gathering', 'building']);
+
+// deterministic per-tile pseudo-random value in [0,1) — used for terrain
+// color mottling and to seed ground-scatter props, so the same tile always
+// looks the same across frames/sessions without storing anything per tile
+function tileNoise(tx, ty) {
+  let h = (tx * 374761393 + ty * 668265263) ^ 0x5bf03635;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h = h ^ (h >>> 16);
+  return ((h >>> 0) % 1000) / 1000;
+}
 
 // Visual-only scale multipliers — bigger, more imposing models on screen
 // without touching gameplay math (collision radius, tile footprint,
@@ -119,9 +130,11 @@ export class Renderer3D {
     this._unitMeshes = new Map();
     this._buildingMeshes = new Map();
     this._resourceMeshes = new Map();
+    this._detailMeshes = new Map();
     this._projectileMeshes = [];
     this._effectMeshes = [];
     this._placementGhost = null;
+    this._resourceAmountLabel = null;
   }
 
   // ---------------- input: screen pixel -> world (x,y) via raycasting ----------------
@@ -171,6 +184,7 @@ export class Renderer3D {
     const map = game.map, fog = game.fog;
     const colorAttr = this._terrainMesh.geometry.getAttribute('color');
     const c = new THREE.Color();
+    const t = game.gameTime;
     let i = 0;
     for (let ty = 0; ty < map.height; ty++) {
       for (let tx = 0; tx < map.width; tx++) {
@@ -178,7 +192,20 @@ export class Renderer3D {
         if (!explored) {
           c.set('#020203');
         } else {
-          c.set(TERRAIN_COLOR[map.getTile(tx, ty)] || TERRAIN_COLOR[0]);
+          const type = map.getTile(tx, ty);
+          c.set(TERRAIN_COLOR[type] || TERRAIN_COLOR[0]);
+          // deterministic per-tile mottling so a solid terrain color doesn't
+          // read as one dead-flat swatch per tile — cheap "texture" without
+          // an actual texture map, stable across frames since it's seeded
+          // purely from tile coordinates
+          c.multiplyScalar(0.88 + tileNoise(tx, ty) * 0.24);
+          if (type === TILE_TYPE.WATER) {
+            // a moving glint recomputed on this same throttled cadence —
+            // choppy rather than a smooth shader-driven wave, but reads as
+            // "alive" instead of a flat-colored pond
+            const glint = 0.85 + 0.3 * Math.max(0, Math.sin(t * 1.6 + tx * 0.6 + ty * 0.4));
+            c.multiplyScalar(glint);
+          }
           if (!fog.isVisible(tx, ty)) c.multiplyScalar(0.45);
         }
         for (let v = 0; v < 4; v++) { colorAttr.setXYZ(i, c.r, c.g, c.b); i++; }
@@ -200,6 +227,109 @@ export class Renderer3D {
     bar.add(fill);
     bar.rotation.x = -0.85;
     return { bar, fill, width };
+  }
+
+  // a small canvas-texture billboard used for the resource-amount readout —
+  // the texture is only redrawn when the displayed number actually changes
+  // (see _setAmountLabel), not every frame, since 2D canvas text drawing is
+  // comparatively expensive
+  _makeAmountLabel() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64; canvas.height = 24;
+    const texture = new THREE.CanvasTexture(canvas);
+    const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false });
+    const sprite = new THREE.Sprite(material);
+    sprite.scale.set(18, 7, 1);
+    sprite.userData.canvas = canvas;
+    sprite.userData.ctx = canvas.getContext('2d');
+    sprite.userData.texture = texture;
+    sprite.userData.lastText = null;
+    return sprite;
+  }
+
+  _setAmountLabel(sprite, amount) {
+    const text = String(Math.max(0, Math.floor(amount)));
+    if (sprite.userData.lastText === text) return;
+    sprite.userData.lastText = text;
+    const ctx = sprite.userData.ctx, canvas = sprite.userData.canvas;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.font = 'bold 18px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+    ctx.strokeText(text, canvas.width / 2, canvas.height / 2);
+    ctx.fillStyle = '#f0e6c8';
+    ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+    sprite.userData.texture.needsUpdate = true;
+  }
+
+  // shows the remaining amount above whichever resource tile the player
+  // last clicked (game.selectedResourceTile, set by Game.handleLeftClick,
+  // untouched by the 3D rewrite) — matches the old 2D renderer's behavior
+  // of only labeling the clicked tile, not every resource tile on screen
+  _syncResourceAmountLabel(game) {
+    const sel = game.selectedResourceTile;
+    if (!sel) {
+      if (this._resourceAmountLabel) this._resourceAmountLabel.visible = false;
+      return;
+    }
+    const amount = game.map.getResourceAmount(sel.tx, sel.ty);
+    if (amount <= 0) {
+      if (this._resourceAmountLabel) this._resourceAmountLabel.visible = false;
+      return;
+    }
+    if (!this._resourceAmountLabel) {
+      this._resourceAmountLabel = this._makeAmountLabel();
+      this.scene.add(this._resourceAmountLabel);
+    }
+    const TILE = game.tileSize;
+    const label = this._resourceAmountLabel;
+    label.visible = true;
+    label.position.set(sel.tx * TILE + TILE / 2, 22, sel.ty * TILE + TILE / 2);
+    this._setAmountLabel(label, amount);
+  }
+
+  // grass tufts / rock pebbles scattered on plain ground tiles — bounded to
+  // roughly the current camera viewport (plus a small margin) rather than
+  // the whole map, so the live prop count stays proportional to what's
+  // actually on screen instead of growing with total map size
+  _syncTerrainDetail(game) {
+    const map = game.map, fog = game.fog, TILE = game.tileSize, cam = game.camera;
+    const margin = 2;
+    const tx0 = Math.max(0, Math.floor(cam.x / TILE) - margin);
+    const ty0 = Math.max(0, Math.floor(cam.y / TILE) - margin);
+    const tx1 = Math.min(map.width - 1, Math.floor((cam.x + cam.width) / TILE) + margin);
+    const ty1 = Math.min(map.height - 1, Math.floor((cam.y + cam.height) / TILE) + margin);
+    const seen = new Set();
+    for (let ty = ty0; ty <= ty1; ty++) {
+      for (let tx = tx0; tx <= tx1; tx++) {
+        if (!fog.isVisible(tx, ty)) continue; // only decorate ground currently in sight
+        const type = map.getTile(tx, ty);
+        if (type !== TILE_TYPE.GRASS && type !== TILE_TYPE.ROCK) continue; // resource tiles already get a tree/ore prop
+        const key = tx + ',' + ty;
+        let entry = this._detailMeshes.get(key);
+        if (entry && entry.type !== type) {
+          this.scene.remove(entry.model);
+          this._detailMeshes.delete(key);
+          entry = null;
+        }
+        if (!entry) {
+          const seed = tx * 7 + ty * 13;
+          const model = type === TILE_TYPE.GRASS ? createGrassTuft(seed) : createRockDetail(seed);
+          model.position.set(tx * TILE + TILE / 2, 0, ty * TILE + TILE / 2);
+          this.scene.add(model);
+          entry = { model, type };
+          this._detailMeshes.set(key, entry);
+        }
+        seen.add(key);
+      }
+    }
+    for (const [key, entry] of this._detailMeshes) {
+      if (seen.has(key)) continue;
+      this.scene.remove(entry.model);
+      this._detailMeshes.delete(key);
+    }
   }
 
   _setBarPct(barInfo, pct, color) {
@@ -515,12 +645,14 @@ export class Renderer3D {
       this._buildTerrain(game.map, game.tileSize);
       this._updateTerrainColors(game);
       this._syncResourceProps(game);
+      this._syncTerrainDetail(game);
     } else {
       this._terrainColorDirty += 1;
       if (this._terrainColorDirty >= 6) { // throttle to roughly a few times/sec at 60fps
         this._terrainColorDirty = 0;
         this._updateTerrainColors(game);
         this._syncResourceProps(game);
+        this._syncTerrainDetail(game);
       }
     }
 
@@ -529,6 +661,7 @@ export class Renderer3D {
     this._syncBuildings(game);
     this._syncProjectiles(game);
     this._syncEffects(game);
+    this._syncResourceAmountLabel(game);
     this._syncPlacementGhost(game);
 
     this.renderer.render(this.scene, this.camera);

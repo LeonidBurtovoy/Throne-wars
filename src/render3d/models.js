@@ -708,6 +708,69 @@ export function createSteelNodeModel() {
   return oreOutcrop('#33363e', '#9fc0d4', '#eef6fb', (r) => new THREE.OctahedronGeometry(r, 0));
 }
 
+// ---------------- plain-ground scatter (grass tufts / rock pebbles) ----------------
+
+// a small cluster of grass blades, plus a rare wildflower or pebble tucked
+// in — the 3D equivalent of the old 2D ground-detail sprite (blade strokes
+// + an occasional trinket), so grass tiles read as textured ground instead
+// of a flat green swatch
+export function createGrassTuft(seed = 0) {
+  const g = new THREE.Group();
+  const bladeShades = ['#4a8a3a', '#3f7a32', '#5a9a44'];
+  for (let i = 0; i < 3; i++) {
+    const jitterX = ((seed * 11 + i * 9) % 9) - 4;
+    const jitterZ = ((seed * 7 + i * 13) % 9) - 4;
+    const h = 2.4 + ((seed + i * 5) % 4) / 2;
+    const blade = box(0.5, h, 2.2, bladeShades[(seed + i) % 3], { roughness: 0.9 });
+    blade.position.set(jitterX, h / 2, jitterZ);
+    blade.rotation.y = (((seed + i) * 47) % 100) / 100 * Math.PI * 2;
+    blade.rotation.z = 0.18 * (((seed + i) % 3) - 1);
+    g.add(blade);
+  }
+  const trinket = (seed * 31) % 100;
+  if (trinket > 92) { // rare wildflower cluster
+    const petal = trinket % 2 === 0 ? '#e8d278' : '#dcc2d2';
+    for (const [ox, oz] of [[0, 0], [1.3, 0.5], [-1.1, 0.6]]) {
+      const flower = ball(0.6, petal, { roughness: 0.6 });
+      flower.position.set(ox, 2, oz);
+      g.add(flower);
+    }
+  } else if (trinket > 80) { // small pebble underfoot
+    const pebble = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshStandardMaterial({ color: '#5a5648', flatShading: true }));
+    pebble.scale.set(1, 0.55, 0.9);
+    pebble.position.set(1, 0.5, -1);
+    pebble.castShadow = true; pebble.receiveShadow = true;
+    g.add(pebble);
+  }
+  return g;
+}
+
+// a couple of shaded boulders (plus an occasional moss patch) — the rock
+// equivalent of a grass tuft, giving flat rock tiles some actual relief
+// instead of a single dead-flat grey color
+export function createRockDetail(seed = 0) {
+  const g = new THREE.Group();
+  const n = 2 + (seed % 2);
+  for (let i = 0; i < n; i++) {
+    const jitterX = ((seed * 9 + i * 11) % 11) - 5;
+    const jitterZ = ((seed * 13 + i * 7) % 11) - 5;
+    const r = 1.1 + ((seed + i * 3) % 5) / 4;
+    const shade = (seed + i) % 2 === 0 ? '#57503f' : '#413c30';
+    const boulder = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 0), new THREE.MeshStandardMaterial({ color: shade, flatShading: true, roughness: 1 }));
+    boulder.scale.set(1, 0.6, 0.9);
+    boulder.position.set(jitterX, r * 0.5, jitterZ);
+    boulder.rotation.set(seed * 0.3, i * 0.7, seed + i);
+    boulder.castShadow = true; boulder.receiveShadow = true;
+    g.add(boulder);
+  }
+  if ((seed * 17) % 100 > 78) { // patch of moss on the shaded side
+    const moss = box(2.4, 0.2, 1.6, '#4a6a3a', { roughness: 1 });
+    moss.position.set(-2, 0.15, 2);
+    g.add(moss);
+  }
+  return g;
+}
+
 // ---------------- carried resource (attached to a gathering worker) ----------------
 
 // what a worker visibly carries while gathering — a log bundle on the back
