@@ -2,6 +2,7 @@ import { VIEWPORT, BOTTOM_HUD_HEIGHT } from './config.js';
 import { generateMap } from './map/mapData.js';
 import { Game } from './engine/Game.js';
 import { InputHandler } from './engine/Input.js';
+import { Renderer3D } from './render3d/Renderer3D.js';
 import { initMinimap } from './ui/HUD.js';
 import { hostRoom, joinRoom, makeLink } from './net/PeerLink.js';
 import { NetworkHost } from './net/NetworkHost.js';
@@ -200,15 +201,14 @@ function prepareCanvas() {
   return canvas;
 }
 
-function runLoop(game, canvas, extraTick) {
-  const ctx = canvas.getContext('2d');
+function runLoop(game, extraTick) {
   let lastTime = performance.now();
   function loop(now) {
     const dt = Math.min(0.05, (now - lastTime) / 1000);
     lastTime = now;
     try {
       game.update(dt);
-      game.render(ctx);
+      game.renderer3D.render(game);
       if (extraTick) extraTick(dt);
     } catch (err) {
       reportFatal('Ошибка во время игрового цикла (update/render)', err);
@@ -231,9 +231,10 @@ function bootLocalGame(faction, mapId, numOpponents) {
     viewportWidth: VIEWPORT.width,
     viewportHeight: VIEWPORT.height,
   });
+  game.renderer3D = new Renderer3D(canvas, VIEWPORT.width, VIEWPORT.height);
   game.input = new InputHandler(canvas, game);
   initMinimap(game);
-  runLoop(game, canvas);
+  runLoop(game);
 }
 
 function bootNetworkHostGame(faction, mapId, link) {
@@ -253,9 +254,10 @@ function bootNetworkHostGame(faction, mapId, link) {
     remoteOwner: 1,
   });
   const host = new NetworkHost(game, link);
+  game.renderer3D = new Renderer3D(canvas, VIEWPORT.width, VIEWPORT.height);
   game.input = new InputHandler(canvas, game);
   initMinimap(game);
-  runLoop(game, canvas, (dt) => host.tick(dt));
+  runLoop(game, (dt) => host.tick(dt));
 }
 
 function bootNetworkGuestGame(hostFaction, mapId, link) {
@@ -274,7 +276,8 @@ function bootNetworkGuestGame(hostFaction, mapId, link) {
     isRemoteGuest: true,
   });
   new NetworkGuest(game, link);
+  game.renderer3D = new Renderer3D(canvas, VIEWPORT.width, VIEWPORT.height);
   game.input = new InputHandler(canvas, game);
   initMinimap(game);
-  runLoop(game, canvas);
+  runLoop(game);
 }

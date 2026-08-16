@@ -27,7 +27,7 @@ export class InputHandler {
     window.addEventListener('mousemove', (e) => {
       const [sx, sy] = this._rectPos(e);
       this.mouseX = sx; this.mouseY = sy;
-      const [wx, wy] = this.game.camera.screenToWorld(sx, sy);
+      const [wx, wy] = this.game.renderer3D.screenToWorld(sx, sy);
       if (this.mouseDown && this.dragStart) {
         const dx = sx - this.dragStart[0], dy = sy - this.dragStart[1];
         if (Math.hypot(dx, dy) > 5) this.dragging = true;
@@ -37,7 +37,7 @@ export class InputHandler {
 
     this.canvas.addEventListener('mousedown', (e) => {
       const [sx, sy] = this._rectPos(e);
-      const [wx, wy] = this.game.camera.screenToWorld(sx, sy);
+      const [wx, wy] = this.game.renderer3D.screenToWorld(sx, sy);
       if (e.button === 0) {
         if (this.game.buildPlacementMode) {
           this.game.confirmBuildPlacement(wx, wy);
@@ -58,11 +58,11 @@ export class InputHandler {
       const [sx, sy] = this._rectPos(e);
       const shiftKey = e.shiftKey;
       if (this.dragging) {
-        const [wx0, wy0] = this.game.camera.screenToWorld(this.dragStart[0], this.dragStart[1]);
-        const [wx1, wy1] = this.game.camera.screenToWorld(sx, sy);
+        const [wx0, wy0] = this.game.renderer3D.screenToWorld(this.dragStart[0], this.dragStart[1]);
+        const [wx1, wy1] = this.game.renderer3D.screenToWorld(sx, sy);
         this.game.handleBoxSelect(wx0, wy0, wx1, wy1, shiftKey);
       } else {
-        const [wx, wy] = this.game.camera.screenToWorld(sx, sy);
+        const [wx, wy] = this.game.renderer3D.screenToWorld(sx, sy);
         this.game.handleLeftClick(wx, wy, shiftKey);
       }
       this.mouseDown = false;
