@@ -57,27 +57,36 @@ export class Renderer3D {
     // of clipping them, the single biggest lever for a "realistic" (vs
     // flat/cartoonish) response to the new real lights
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.15;
+    // ACES rolls off highlights but also visibly darkens the overall image
+    // versus no tone mapping at all — 1.15 read as genuinely dark with the
+    // light levels below; pushed up hard to compensate
+    this.renderer.toneMappingExposure = 1.9;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color('#0a0a12');
-    // atmospheric depth: distant terrain fades toward the background color
-    // instead of every tile reading at full contrast regardless of distance
-    this.scene.fog = new THREE.Fog('#0a0a12', 900, 2600);
+    // a bright, clear daytime sky instead of a near-black void — the old
+    // near-black background/fog color was a leftover from the flat 2D
+    // canvas' void color and reads as "dark" the instant any sky is
+    // visible in a real 3D scene
+    const SKY = '#8fb2da';
+    this.scene.background = new THREE.Color(SKY);
+    // atmospheric depth: distant terrain fades toward the sky color instead
+    // of every tile reading at full contrast regardless of distance — pushed
+    // further out so it only affects the far edge of view, not most of it
+    this.scene.fog = new THREE.Fog(SKY, 1500, 3600);
 
     const halfW = viewportWidth / 2, halfH = viewportHeight / 2;
-    this.camera = new THREE.OrthographicCamera(-halfW, halfW, halfH * 1.35, -halfH * 1.35, 1, 4000);
+    this.camera = new THREE.OrthographicCamera(-halfW, halfW, halfH * 1.5, -halfH * 1.5, 1, 4000);
     this._elevRad = THREE.MathUtils.degToRad(55);
     this._camDist = 1200;
 
     // sky/ground bounce light instead of flat ambient — reads as real
     // outdoor daylight rather than a uniform grey fill
-    this.scene.add(new THREE.HemisphereLight('#bcd4f2', '#2a2418', 0.55));
+    this.scene.add(new THREE.HemisphereLight('#cfe0f7', '#4a4030', 1.05));
     // the sun: repositioned every frame in _updateCamera to follow the
     // camera's look-at target, so its shadow frustum always covers the
     // currently-visible ground instead of only the area near world origin
     // (which would leave most of a large map permanently unshadowed)
-    const sun = new THREE.DirectionalLight('#fff3d8', 1.6);
+    const sun = new THREE.DirectionalLight('#fff6e0', 2.6);
     sun.castShadow = true;
     sun.shadow.camera.left = -900; sun.shadow.camera.right = 900;
     sun.shadow.camera.top = 900; sun.shadow.camera.bottom = -900;
@@ -88,11 +97,11 @@ export class Renderer3D {
     this.scene.add(sun);
     this.scene.add(sun.target);
     this.sun = sun;
-    // dim, cool fill light from the opposite side of the sun — keeps
-    // shadowed faces from going flat black, the classic cheap "3-point
-    // lighting" trick for making a scene read as lit by an environment
-    // instead of one hard light source
-    const fill = new THREE.DirectionalLight('#5f7aa8', 0.35);
+    // cool fill light from the opposite side of the sun — keeps shadowed
+    // faces readable instead of going flat black, the classic cheap
+    // "3-point lighting" trick for a scene lit by an environment instead
+    // of one hard light source
+    const fill = new THREE.DirectionalLight('#7fa0cc', 0.7);
     fill.position.set(1, 1, 1); // relative offset only, repositioned with the sun each frame
     this.scene.add(fill);
     this.scene.add(fill.target);
@@ -147,7 +156,7 @@ export class Renderer3D {
     // DoubleSide: hand-built geometry, and this environment has no way to
     // visually confirm triangle winding is front-facing-up — safer to pay
     // a small draw cost than risk an invisible ground plane
-    const mat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
+    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.95, metalness: 0 });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.receiveShadow = true;
     this.scene.add(mesh);
