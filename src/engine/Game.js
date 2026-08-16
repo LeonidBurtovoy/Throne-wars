@@ -174,9 +174,19 @@ export class Game {
   }
 
   spawnUnitFromBuilding(building, role) {
-    const cx = building.tx + Math.floor(building.size / 2);
-    const cy = building.ty + Math.floor(building.size / 2);
-    const spot = this.map.findAdjacentWalkable(building.tx, building.ty, cx, cy) || [building.tx, building.ty + building.size];
+    // spawn at the building's rally point (already well clear of the
+    // footprint — one whole building-length past the edge), not the tile
+    // immediately touching its corner. That corner spot used to be fine
+    // when buildings were flat 2D sprites, but the bigger inflated 3D
+    // models (especially Winterfell's towers, which stick out past the
+    // actual tile footprint) could visually swallow a unit standing right
+    // up against them, and workers in particular never auto-walk away
+    // from wherever they spawn until the player orders them somewhere.
+    const rally = building.rallyPoint;
+    const rtx = Math.floor(rally.x / TILE), rty = Math.floor(rally.y / TILE);
+    const spot = (!this.map.isBlocked(rtx, rty) ? [rtx, rty] : this.map.findAdjacentWalkable(rtx, rty, rtx, rty))
+      || this.map.findAdjacentWalkable(building.tx, building.ty, building.tx, building.ty)
+      || [building.tx, building.ty + building.size];
     const wx = spot[0] * TILE + TILE / 2;
     const wy = spot[1] * TILE + TILE / 2;
     const unit = new Unit(role, building.owner, building.faction, wx, wy);

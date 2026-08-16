@@ -34,9 +34,9 @@ const RESOURCE_TILE_TYPES = new Set([1, 4, 5]); // forest, gold, steel
 // without touching gameplay math (collision radius, tile footprint,
 // pathfinding all stay exactly as Game.js computes them; only what gets
 // drawn is bigger).
-const UNIT_SCALE = 1.4;
-const BUILDING_SCALE = 1.25;
-const RESOURCE_SCALE = 1.3;
+const UNIT_SCALE = 1.65;
+const BUILDING_SCALE = 1.45;
+const RESOURCE_SCALE = 1.5;
 
 export class Renderer3D {
   constructor(canvas, viewportWidth, viewportHeight) {
@@ -45,10 +45,19 @@ export class Renderer3D {
     this.height = viewportHeight;
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    // render at the display's actual pixel density (capped at 2x for
+    // performance) — without this, every HiDPI/Retina screen renders at
+    // half (or less) of its real resolution and looks soft/blurry
+    this.renderer.setPixelRatio(Math.min(typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1, 2));
     this.renderer.setSize(viewportWidth, viewportHeight, false);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap; // softer, less jagged shadow edges
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    // filmic tone mapping — rolls off bright highlights naturally instead
+    // of clipping them, the single biggest lever for a "realistic" (vs
+    // flat/cartoonish) response to the new real lights
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.15;
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color('#0a0a12');
@@ -79,6 +88,15 @@ export class Renderer3D {
     this.scene.add(sun);
     this.scene.add(sun.target);
     this.sun = sun;
+    // dim, cool fill light from the opposite side of the sun — keeps
+    // shadowed faces from going flat black, the classic cheap "3-point
+    // lighting" trick for making a scene read as lit by an environment
+    // instead of one hard light source
+    const fill = new THREE.DirectionalLight('#5f7aa8', 0.35);
+    fill.position.set(1, 1, 1); // relative offset only, repositioned with the sun each frame
+    this.scene.add(fill);
+    this.scene.add(fill.target);
+    this.fill = fill;
 
     this._raycaster = new THREE.Raycaster();
     this._groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -388,6 +406,11 @@ export class Renderer3D {
     this.sun.position.set(targetX - 400, 600, targetZ - 300);
     this.sun.target.position.set(targetX, 0, targetZ);
     this.sun.target.updateMatrixWorld();
+
+    // fill light mirrors the sun from the opposite side, same follow logic
+    this.fill.position.set(targetX + 400, 300, targetZ + 300);
+    this.fill.target.position.set(targetX, 0, targetZ);
+    this.fill.target.updateMatrixWorld();
   }
 
   // ---------------- main entry point, called once per frame from main.js ----------------
