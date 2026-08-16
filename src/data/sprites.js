@@ -56,6 +56,9 @@ function shadedBlock(ctx, x, y, w, h, baseColor) {
   const depth = Math.max(0.8, w * 0.24);
   ctx.fillStyle = darkenColor(baseColor, 0.5);
   ctx.fillRect(x + w - depth, y, depth, h);
+  // left-edge highlight — completes the top-left light source story
+  ctx.fillStyle = lighten(baseColor, 0.28);
+  ctx.fillRect(x, y, Math.max(0.4, w * 0.08), h);
 }
 
 const TRAVELING_STATES = new Set(['moving', 'attack-move', 'moving-to-gather', 'moving-to-build', 'returning-to-drop']);
@@ -711,8 +714,21 @@ function outlinedRect(ctx, x, y, w, h, fillColor, outlineColor = 'rgba(8,6,4,0.7
   ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(x + w - depth, y); ctx.lineTo(x + w - depth, y + h); ctx.stroke();
 
-  ctx.fillStyle = lighten(fillColor, 0.5);
-  ctx.fillRect(x, y, w - depth, Math.max(1, h * 0.06));
+  // lit top ledge: a horizontal gradient (brightest at the light-facing
+  // left edge, fading toward the side face) instead of a flat highlight —
+  // reads as an actual thin lit surface, not just a painted stripe
+  const ledgeH = Math.max(2, h * 0.08);
+  const ledgeGrad = ctx.createLinearGradient(x, 0, x + w, 0);
+  ledgeGrad.addColorStop(0, lighten(fillColor, 0.55));
+  ledgeGrad.addColorStop(1, lighten(fillColor, 0.2));
+  ctx.fillStyle = ledgeGrad;
+  ctx.fillRect(x, y, w - depth, ledgeH);
+
+  // left-edge highlight sliver — completes the "lit from the top-left"
+  // story the dark right-side face already tells, wrapping a thin strip
+  // of light around the front-left corner of the block
+  ctx.fillStyle = lighten(fillColor, 0.3);
+  ctx.fillRect(x, y, Math.max(1, w * 0.035), h);
 
   ctx.strokeStyle = outlineColor;
   ctx.lineWidth = lineWidth;
@@ -1211,7 +1227,7 @@ export function drawGoldNode(ctx, x, y, tile, time = 0, seed = 0) {
   ctx.translate(x, y);
   ctx.fillStyle = 'rgba(0,0,0,0.28)';
   ctx.beginPath();
-  ctx.ellipse(tile * 0.5, tile * 0.86, tile * 0.4, tile * 0.11, 0, 0, Math.PI * 2);
+  ctx.ellipse(tile * 0.56, tile * 0.86, tile * 0.4, tile * 0.11, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.fillStyle = roofGradient(ctx, tile * 0.12, tile * 0.92, '#4a4034');
   ctx.beginPath();
@@ -1250,7 +1266,7 @@ export function drawSteelNode(ctx, x, y, tile, time = 0, seed = 0) {
   ctx.translate(x, y);
   ctx.fillStyle = 'rgba(0,0,0,0.28)';
   ctx.beginPath();
-  ctx.ellipse(tile * 0.5, tile * 0.84, tile * 0.4, tile * 0.11, 0, 0, Math.PI * 2);
+  ctx.ellipse(tile * 0.56, tile * 0.84, tile * 0.4, tile * 0.11, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.fillStyle = roofGradient(ctx, tile * 0.14, tile * 0.9, '#2c2e34');
   ctx.beginPath();

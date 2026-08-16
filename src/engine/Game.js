@@ -841,7 +841,7 @@ export class Game {
     if (sx + sizePx < 0 || sy + sizePx < 0 || sx > this.camera.width || sy > this.camera.height) return;
     ctx.fillStyle = 'rgba(0,0,0,0.4)';
     ctx.beginPath();
-    ctx.ellipse(sx + sizePx / 2, sy + sizePx - 2, sizePx * 0.5, sizePx * 0.12, 0, 0, Math.PI * 2);
+    ctx.ellipse(sx + sizePx * 0.58, sy + sizePx - 2, sizePx * 0.5, sizePx * 0.12, 0, 0, Math.PI * 2);
     ctx.fill();
     drawBuilding(ctx, b.type, FACTIONS[b.faction], b.faction, sx, sy, sizePx, b.buildProgress, this.gameTime);
     if (b.selected) {
@@ -882,7 +882,7 @@ export class Game {
 
     ctx.fillStyle = 'rgba(0,0,0,0.42)';
     ctx.beginPath();
-    ctx.ellipse(sx, sy + drawSize * 0.4, drawSize * (u.role === 'legend' ? 0.44 : u.role === 'cavalry' ? 0.42 : u.role === 'siege' ? 0.4 : u.role === 'champion' ? 0.32 : 0.26), drawSize * 0.14, 0, 0, Math.PI * 2);
+    ctx.ellipse(sx + drawSize * 0.1, sy + drawSize * 0.4, drawSize * (u.role === 'legend' ? 0.44 : u.role === 'cavalry' ? 0.42 : u.role === 'siege' ? 0.4 : u.role === 'champion' ? 0.32 : 0.26), drawSize * 0.14, 0, 0, Math.PI * 2);
     ctx.fill();
     if (u.selected) {
       ctx.strokeStyle = '#f0e6a0'; ctx.lineWidth = 1.5;
