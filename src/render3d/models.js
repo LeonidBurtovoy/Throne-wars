@@ -88,15 +88,28 @@ function humanoid({ legColor, bodyW, bodyH, bodyD, bodyColor, headColor, headR }
 
 function createWorkerModel(faction) {
   const g = humanoid({ legColor: '#3a3226', bodyW: 9, bodyH: 16, bodyD: 7, bodyColor: faction.colorSecondary, headColor: SKIN, headR: 3.4 });
-  // pickaxe — the tool every 2D version showed on the worker's hip/hand
-  const handle = cyl(0.6, 0.6, 8, WOOD, 6);
-  handle.rotation.z = 0.9;
-  handle.position.set(6, 9, 0);
-  g.add(handle);
-  const head2 = box(1.4, 1.4, 3.2, METAL_DARK, METAL_FINISH);
-  head2.position.set(9, 12, 0);
-  g.add(head2);
-  g.userData.weapon = handle; // swung by Renderer3D while gathering/attacking
+  // arm + pickaxe built as one rigid group pivoted at the shoulder, so the
+  // gather/attack swing (Renderer3D rotates userData.weapon) reads as a
+  // real mining motion around the shoulder instead of just the handle
+  // spinning in place while the head stayed fixed to the body — and sized
+  // up well past the old twig-sized tool so it actually reads at a glance
+  const shoulderY = g.userData.torsoTopY - 2.5;
+  const arm = new THREE.Group();
+  arm.position.set(4.3, shoulderY, 0);
+  const forearm = box(2.4, 7, 2.4, SKIN, { roughness: 0.9 });
+  forearm.position.set(3, -3.4, 0);
+  forearm.rotation.z = -0.5;
+  arm.add(forearm);
+  const handle = cyl(0.9, 0.9, 11, WOOD, 6);
+  handle.rotation.z = 1.05;
+  handle.position.set(6.4, -6.4, 0);
+  arm.add(handle);
+  const pickHead = box(2.3, 2.3, 5.2, METAL_DARK, METAL_FINISH);
+  pickHead.position.set(11, -4, 0);
+  pickHead.rotation.z = 0.15;
+  arm.add(pickHead);
+  g.add(arm);
+  g.userData.weapon = arm; // whole arm+pickaxe swings together
   return g;
 }
 
@@ -359,6 +372,44 @@ function baseWallAndRoof(footprintPx, wallH, stoneColor, roofColor, roofRatio = 
   return g;
 }
 
+// A-frame roof made of two angled flat panels meeting at a ridge, instead
+// of the single cone every baseWallAndRoof building shares — gives
+// barracks/stable a real hall/barn silhouette. ridgeSpan runs along the
+// ridge (the building's width, x); slopeSpan is the depth the roof slopes
+// down across (z). The panel tilt is derived analytically (not eyeballed)
+// so the two halves always meet cleanly at the ridge regardless of size.
+function gableRoof(ridgeSpan, slopeSpan, wallH, roofH, color) {
+  const g = new THREE.Group();
+  const slopeLen = Math.hypot(slopeSpan / 2, roofH);
+  const phi = Math.atan2(roofH, slopeSpan / 2);
+  for (const side of [1, -1]) {
+    const panel = box(ridgeSpan * 1.06, 0.7, slopeLen, color, { roughness: 0.85 });
+    panel.position.set(0, wallH + roofH / 2, side * slopeSpan / 4);
+    panel.rotation.x = side * phi;
+    g.add(panel);
+  }
+  return g;
+}
+
+// four corner posts holding up a flat overhanging roof — an open-air shed
+// silhouette (workshop/market) instead of a fully-walled hall, so they read
+// as busy outdoor yards rather than another fortified box
+function postRoof(wallSize, postH, roofColor) {
+  const g = new THREE.Group();
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      const post = cyl(0.9, 1, postH, WOOD, 6);
+      post.position.set(sx * wallSize * 0.42, postH / 2, sz * wallSize * 0.42);
+      g.add(post);
+    }
+  }
+  const roof = box(wallSize * 1.18, 1.2, wallSize * 1.18, roofColor, { roughness: 0.85 });
+  roof.position.y = postH + 0.6;
+  g.add(roof);
+  g.userData.postH = postH;
+  return g;
+}
+
 // Winterfell: not one symmetric spire but a sprawling cluster of stone
 // towers at irregular heights/positions around a long main hall — the
 // single biggest visual cue that separates it from every other building.
@@ -509,21 +560,43 @@ function createFarm(faction, factionKey, footprintPx) {
   return g;
 }
 
+// A gable-roofed hall flanked by twin corner watch-posts — a garrison
+// silhouette, distinct from the single generic tower every other basic
+// building used to share via baseWallAndRoof.
 function createBarracks(faction, factionKey, footprintPx) {
   const isStark = factionKey !== 'targaryen';
   const stone = isStark ? '#6b7280' : '#4a3230';
-  const g = baseWallAndRoof(footprintPx, 22, stone, isStark ? '#3d4a56' : '#221115', 0.16);
-  g.add(roofline(g.userData.wallSize, g.userData.wallH, isStark, isStark ? '#e7edf3' : '#180c0e'));
+  const trim = isStark ? '#e7edf3' : '#180c0e';
+  const g = new THREE.Group();
+  const hallW = footprintPx * 0.86;
+  const hallD = footprintPx * 0.6;
+  const wallH = 15;
+  const hall = box(hallW, wallH, hallD, stone);
+  hall.position.y = wallH / 2;
+  g.add(hall);
+  const roofH = hallD * 0.42;
+  g.add(gableRoof(hallW, hallD, wallH, roofH, isStark ? '#3d4a56' : '#221115'));
+  const postH = wallH + 7;
+  for (const side of [-1, 1]) {
+    const post = cyl(footprintPx * 0.08, footprintPx * 0.09, postH, stone, 8);
+    post.position.set(side * hallW / 2, postH / 2, hallD / 2);
+    g.add(post);
+    const cren = roofline(footprintPx * 0.2, postH, isStark, trim);
+    cren.position.set(side * hallW / 2, 0, hallD / 2);
+    g.add(cren);
+  }
   // training dummy out front
-  const post = cyl(0.8, 0.8, 8, WOOD, 6);
-  post.position.set(-footprintPx * 0.3, 4, footprintPx * 0.3);
-  g.add(post);
+  const dummyPost = cyl(0.8, 0.8, 8, WOOD, 6);
+  dummyPost.position.set(0, 4, hallD * 0.5 + 6);
+  g.add(dummyPost);
   const dummyHead = ball(1.6, '#c9a23a');
-  dummyHead.position.set(-footprintPx * 0.3, 8.5, footprintPx * 0.3);
+  dummyHead.position.set(0, 8.5, hallD * 0.5 + 6);
   g.add(dummyHead);
   const crossbar = box(4, 0.6, 0.6, WOOD);
-  crossbar.position.set(-footprintPx * 0.3, 6.5, footprintPx * 0.3);
+  crossbar.position.set(0, 6.5, hallD * 0.5 + 6);
   g.add(crossbar);
+  g.userData.wallH = wallH;
+  g.userData.roofTopY = Math.max(wallH + roofH, postH + 3);
   return g;
 }
 
@@ -543,7 +616,37 @@ function createArchery(faction, factionKey, footprintPx) {
 function createStable(faction, factionKey, footprintPx) {
   const isStark = factionKey !== 'targaryen';
   if (isStark) {
-    const g = baseWallAndRoof(footprintPx, 18, WOOD, '#c9d3da', 0.3);
+    // a proper long barn (gabled hall + hayloft door + a small paddock
+    // fence off to the side) instead of the generic box+cone silhouette
+    const g = new THREE.Group();
+    const barnOffsetX = -footprintPx * 0.14;
+    const barnW = footprintPx * 0.62;
+    const barnD = footprintPx * 0.95;
+    const wallH = 13;
+    const barn = box(barnW, wallH, barnD, WOOD);
+    barn.position.set(barnOffsetX, wallH / 2, 0);
+    g.add(barn);
+    const roofH = barnW * 0.55;
+    // ridge runs along the barn's long axis (z), so the roof (built with
+    // its ridge along local x) is rotated 90 degrees to match
+    const roof = gableRoof(barnD, barnW, wallH, roofH, '#c9d3da');
+    roof.rotation.y = Math.PI / 2;
+    roof.position.x = barnOffsetX;
+    g.add(roof);
+    const loft = box(4, 4, 0.4, '#2a2218');
+    loft.position.set(barnOffsetX, wallH - 2, barnD / 2 + 0.3);
+    g.add(loft);
+    // small paddock fence to the right of the barn
+    for (let i = 0; i < 4; i++) {
+      const post = cyl(0.5, 0.5, 4, WOOD, 6);
+      post.position.set(footprintPx * 0.22 + i * footprintPx * 0.1, 2, footprintPx * 0.3);
+      g.add(post);
+    }
+    const rail = box(footprintPx * 0.3, 0.6, 0.6, WOOD);
+    rail.position.set(footprintPx * 0.37, 3, footprintPx * 0.3);
+    g.add(rail);
+    g.userData.wallH = wallH;
+    g.userData.roofTopY = wallH + roofH;
     return g;
   }
   // Targaryen: dragon den — an irregular rocky mound instead of a wall+roof
@@ -579,58 +682,127 @@ function createTower(faction, factionKey, footprintPx) {
   return g;
 }
 
+// low, wide furnace shed with a big stone furnace mound built into one
+// side (glowing vents, tall chimney) instead of a plain box interior — an
+// industrial silhouette, not just a recolored hall
 function createForge(faction, factionKey, footprintPx) {
   const isStark = factionKey !== 'targaryen';
   const stone = isStark ? '#5a5f68' : '#3a2622';
-  const g = baseWallAndRoof(footprintPx, 20, stone, isStark ? '#3d4a56' : '#221115', 0.14);
-  const chimney = box(3, 14, 3, '#2a2622');
-  chimney.position.set(footprintPx * 0.28, 27, 0);
+  const g = baseWallAndRoof(footprintPx, 14, stone, isStark ? '#3d4a56' : '#221115', 0.16);
+  const mound = new THREE.Mesh(
+    new THREE.IcosahedronGeometry(footprintPx * 0.24, 0),
+    new THREE.MeshStandardMaterial({ color: '#2a2622', flatShading: true })
+  );
+  mound.scale.set(1, 0.7, 0.8);
+  mound.position.set(footprintPx * 0.2, footprintPx * 0.1, -footprintPx * 0.05);
+  mound.castShadow = true; mound.receiveShadow = true;
+  g.add(mound);
+  const chimney = box(3, 16, 3, '#2a2622');
+  chimney.position.set(footprintPx * 0.2, 22, -footprintPx * 0.05);
   g.add(chimney);
+  for (const vz of [-1.6, 0, 1.6]) {
+    const vent = ember(1);
+    vent.position.set(footprintPx * 0.34, footprintPx * 0.1, -footprintPx * 0.05 + vz);
+    g.add(vent);
+  }
   const anvil = box(6, 4, 3, METAL_DARK, METAL_FINISH);
-  anvil.position.set(-footprintPx * 0.25, 2, footprintPx * 0.25);
+  anvil.position.set(-footprintPx * 0.28, 2, footprintPx * 0.28);
   g.add(anvil);
   const glow = ember(1.6);
-  glow.position.set(0, 3, footprintPx * 0.4);
+  glow.position.set(-footprintPx * 0.28, 4.6, footprintPx * 0.28);
   g.add(glow);
   return g;
 }
 
+// an open-air carpentry yard — four posts holding up a flat roof instead
+// of a fully enclosed hall, workbench + crates + a cart wheel scattered
+// underneath
 function createWorkshop(faction, factionKey, footprintPx) {
   const isStark = factionKey !== 'targaryen';
-  const g = baseWallAndRoof(footprintPx, 20, isStark ? '#6b5a44' : '#6a4a34', faction.colorSecondary, 0.18);
+  const g = postRoof(footprintPx * 0.86, 15, isStark ? '#6b5a44' : '#6a4a34');
+  const bench = box(footprintPx * 0.4, 3, 6, WOOD_LIGHT);
+  bench.position.set(-footprintPx * 0.05, 1.5, 0);
+  g.add(bench);
   const crate = box(6, 6, 6, WOOD_LIGHT);
-  crate.position.set(-footprintPx * 0.3, 3, footprintPx * 0.25);
+  crate.position.set(-footprintPx * 0.32, 3, footprintPx * 0.28);
   g.add(crate);
+  const crate2 = box(4.5, 4.5, 4.5, WOOD_LIGHT);
+  crate2.position.set(-footprintPx * 0.32, 2.25, footprintPx * 0.1);
+  g.add(crate2);
   const wheel = new THREE.Mesh(new THREE.TorusGeometry(4, 0.7, 6, 10), stdMat(METAL_DARK, METAL_FINISH));
   wheel.rotation.y = 0.3;
-  wheel.position.set(footprintPx * 0.3, 4, -footprintPx * 0.25);
+  wheel.position.set(footprintPx * 0.32, 4, -footprintPx * 0.28);
   g.add(wheel);
+  g.userData.wallH = 15;
+  g.userData.roofTopY = g.userData.postH + 2;
   return g;
 }
 
+// a stepped plinth (two stacked platforms) topped by a columned cella —
+// tall and ornate, the only building standing on a raised base
 function createTemple(faction, factionKey, footprintPx) {
   const isStark = factionKey !== 'targaryen';
   const stone = isStark ? '#8a8f9a' : '#4a2c3a';
-  const g = baseWallAndRoof(footprintPx, 24, stone, isStark ? '#c9d3da' : '#6a2540', 0.24);
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(footprintPx * 0.16, 0.8, 8, 16), new THREE.MeshStandardMaterial({ color: isStark ? '#e7edf3' : '#e2622a' }));
-  ring.position.set(0, 14, footprintPx * 0.44);
+  const g = new THREE.Group();
+  const step1 = box(footprintPx * 0.92, 2, footprintPx * 0.92, isStark ? '#6a6f78' : '#3a2230');
+  step1.position.y = 1;
+  g.add(step1);
+  const step2 = box(footprintPx * 0.76, 2, footprintPx * 0.76, isStark ? '#787d86' : '#432735');
+  step2.position.y = 3;
+  g.add(step2);
+  const wallH = 20;
+  const cella = box(footprintPx * 0.5, wallH, footprintPx * 0.5, stone);
+  cella.position.y = 4 + wallH / 2;
+  g.add(cella);
+  const roof = cone(footprintPx * 0.42, footprintPx * 0.22, isStark ? '#c9d3da' : '#6a2540');
+  roof.position.y = 4 + wallH + footprintPx * 0.11;
+  g.add(roof);
+  for (const cx of [-1, -0.4, 0.4, 1]) {
+    const col = cyl(1, 1, wallH, isStark ? '#c9ccd2' : '#5a3444', 8);
+    col.position.set(cx * footprintPx * 0.28, 4 + wallH / 2, footprintPx * 0.36);
+    g.add(col);
+  }
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(footprintPx * 0.14, 0.8, 8, 16), new THREE.MeshStandardMaterial({ color: isStark ? '#e7edf3' : '#e2622a' }));
+  ring.position.set(0, 4 + wallH * 0.7, footprintPx * 0.26);
   g.add(ring);
+  g.userData.wallH = 4 + wallH;
+  g.userData.roofTopY = 4 + wallH + footprintPx * 0.22;
   if (!isStark) { const f = ember(1.8); f.position.y = g.userData.roofTopY + 1; g.add(f); }
   return g;
 }
 
+// a small back-stall under a big faction-colored awning, surrounded by
+// goods — an open bazaar, distinct from the workshop's plain wood-toned
+// open shed even though both are post-and-roof structures
 function createMarket(faction, factionKey, footprintPx) {
-  const g = baseWallAndRoof(footprintPx, 16, factionKey === 'targaryen' ? '#6a4030' : '#7a6a4a', faction.colorSecondary, 0.12);
-  const awning = box(footprintPx * 0.95, 0.6, footprintPx * 0.4, faction.colorPrimary);
-  awning.position.set(0, 16, footprintPx * 0.35);
-  awning.rotation.x = 0.2;
+  const isStark = factionKey !== 'targaryen';
+  const g = new THREE.Group();
+  const wallH = 10;
+  const stall = box(footprintPx * 0.4, wallH, footprintPx * 0.3, isStark ? '#7a6a4a' : '#6a4030');
+  stall.position.set(-footprintPx * 0.22, wallH / 2, -footprintPx * 0.2);
+  g.add(stall);
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      const post = cyl(0.8, 0.8, 13, WOOD, 6);
+      post.position.set(sx * footprintPx * 0.36, 6.5, sz * footprintPx * 0.3 + footprintPx * 0.08);
+      g.add(post);
+    }
+  }
+  const awning = box(footprintPx * 0.9, 1, footprintPx * 0.68, faction.colorPrimary, { roughness: 0.8 });
+  awning.position.set(0, 13, footprintPx * 0.08);
+  awning.rotation.x = 0.12;
   g.add(awning);
   const crate = box(5, 5, 5, WOOD_LIGHT);
-  crate.position.set(footprintPx * 0.28, 2.5, footprintPx * 0.3);
+  crate.position.set(footprintPx * 0.3, 2.5, footprintPx * 0.32);
   g.add(crate);
+  const basket = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 1.8, 3, 8), stdMat('#8a6a3a', { roughness: 1 }));
+  basket.position.set(footprintPx * 0.18, 1.5, footprintPx * 0.34);
+  g.add(basket);
   const coin = cyl(2, 2, 1, '#d8b23a', 10);
-  coin.position.set(-footprintPx * 0.28, 1.5, footprintPx * 0.28);
+  coin.position.set(-footprintPx * 0.05, 0.5, footprintPx * 0.34);
   g.add(coin);
+  g.userData.wallH = wallH;
+  g.userData.roofTopY = 14;
   return g;
 }
 
