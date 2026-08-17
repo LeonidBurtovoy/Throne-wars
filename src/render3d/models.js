@@ -587,21 +587,27 @@ function createTownhallWinterfell(faction, footprintPx) {
   const g = new THREE.Group();
   const stone = '#6b7280';
   const trim = '#e7edf3';
-  g.add(wallRing(footprintPx * 0.62, 10, 16, stone, trim));
+  const wallRadius = footprintPx * 0.46;
+  g.add(wallRing(wallRadius, 9, 16, stone, trim));
 
-  const hall = box(footprintPx * 0.6, 16, footprintPx * 0.4, stone);
-  hall.position.set(footprintPx * 0.08, 8, footprintPx * 0.06);
+  const hall = box(footprintPx * 0.48, 13, footprintPx * 0.32, stone);
+  hall.position.set(footprintPx * 0.05, 6.5, footprintPx * 0.03);
   g.add(hall);
-  const hallRoof = roofline(footprintPx * 0.6, 16, true, trim);
-  hallRoof.position.set(footprintPx * 0.08, 0, footprintPx * 0.06);
+  const hallRoof = roofline(footprintPx * 0.48, 13, true, trim);
+  hallRoof.position.set(footprintPx * 0.05, 0, footprintPx * 0.03);
   g.add(hallRoof);
 
+  // two dominant interior keeps plus a few smaller round turrets built
+  // right against the curtain wall (their distance from origin close to
+  // wallRadius) — matches the reference photo's mix of a couple of tall
+  // keeps with smaller turrets studding the wall itself, tighter overall
+  // than the old spread-out cluster of similarly-sized towers
   const towers = [
-    { x: -footprintPx * 0.22, z: -footprintPx * 0.28, r: footprintPx * 0.12, h: 40 }, // the Great Keep — tallest
-    { x: footprintPx * 0.22, z: -footprintPx * 0.3, r: footprintPx * 0.095, h: 30 },
-    { x: footprintPx * 0.32, z: footprintPx * 0.12, r: footprintPx * 0.08, h: 20 },
-    { x: -footprintPx * 0.05, z: footprintPx * 0.32, r: footprintPx * 0.1, h: 26 },
-    { x: -footprintPx * 0.34, z: footprintPx * 0.06, r: footprintPx * 0.075, h: 16 }, // squat, uneven — a broken tower
+    { x: -footprintPx * 0.14, z: -footprintPx * 0.15, r: footprintPx * 0.095, h: 30 }, // the Great Keep — tallest
+    { x: footprintPx * 0.14, z: -footprintPx * 0.16, r: footprintPx * 0.075, h: 22 },
+    { x: footprintPx * 0.42, z: footprintPx * 0.1, r: footprintPx * 0.055, h: 14 }, // wall turret
+    { x: -footprintPx * 0.4, z: footprintPx * 0.16, r: footprintPx * 0.06, h: 16 }, // wall turret
+    { x: -footprintPx * 0.02, z: footprintPx * 0.2, r: footprintPx * 0.065, h: 18 },
   ];
   let tallest = towers[0];
   for (const t of towers) {
@@ -610,19 +616,19 @@ function createTownhallWinterfell(faction, footprintPx) {
   }
   // small courtyard roofs peeking over the curtain wall, so the inside
   // doesn't read as empty
-  for (const [cx, cz, cw] of [[footprintPx * 0.02, -footprintPx * 0.02, 0.16], [footprintPx * 0.2, footprintPx * 0.22, 0.12]]) {
+  for (const [cx, cz, cw] of [[footprintPx * 0.02, -footprintPx * 0.01, 0.13], [footprintPx * 0.12, footprintPx * 0.14, 0.09]]) {
     const roof = cone(footprintPx * cw, footprintPx * cw * 0.9, trim, 4);
     roof.rotation.y = Math.PI / 4;
-    roof.position.set(cx, 9, cz);
+    roof.position.set(cx, 7.5, cz);
     g.add(roof);
   }
 
-  const banner = box(1.6, footprintPx * 0.24, 1.6, faction.colorPrimary);
-  banner.position.set(tallest.x, tallest.h + footprintPx * 0.12, tallest.z);
+  const banner = box(1.4, footprintPx * 0.18, 1.4, faction.colorPrimary);
+  banner.position.set(tallest.x, tallest.h + footprintPx * 0.1, tallest.z);
   g.add(banner);
-  g.add(godswood(-footprintPx * 0.85, -footprintPx * 0.05, footprintPx * 0.28));
+  g.add(godswood(-footprintPx * 0.62, -footprintPx * 0.03, footprintPx * 0.2));
 
-  g.userData.wallH = 16;
+  g.userData.wallH = 13;
   g.userData.roofTopY = tallest.h;
   return g;
 }
@@ -694,38 +700,51 @@ function createTownhallDragonstone(faction, footprintPx) {
   const dark = '#241417';
   const stone = '#3a3236';
   const rock = new THREE.Mesh(
-    new THREE.IcosahedronGeometry(footprintPx * 0.6, 1),
+    new THREE.IcosahedronGeometry(footprintPx * 0.46, 1),
     new THREE.MeshStandardMaterial({ color: '#1a1214', flatShading: true, roughness: 1 })
   );
   rock.scale.set(1.2, 0.4, 1.15);
-  rock.position.y = footprintPx * 0.1;
+  rock.position.y = footprintPx * 0.08;
   rock.castShadow = true; rock.receiveShadow = true;
   g.add(rock);
-  for (const [mx, mz, mr] of [[footprintPx * 0.32, footprintPx * 0.18, 4], [-footprintPx * 0.36, -footprintPx * 0.1, 3.4], [footprintPx * 0.1, -footprintPx * 0.3, 3]]) {
+  for (const [mx, mz, mr] of [[footprintPx * 0.24, footprintPx * 0.14, 3.2], [-footprintPx * 0.28, -footprintPx * 0.08, 2.7], [footprintPx * 0.08, -footprintPx * 0.23, 2.4]]) {
     const moss = new THREE.Mesh(new THREE.CircleGeometry(mr, 8), new THREE.MeshStandardMaterial({ color: '#3a4a2c', roughness: 1 }));
     moss.rotation.x = -Math.PI / 2;
-    moss.position.set(mx, footprintPx * 0.12, mz);
+    moss.position.set(mx, footprintPx * 0.1, mz);
     g.add(moss);
   }
 
-  const baseY = footprintPx * 0.2;
-  g.add(wallRing(footprintPx * 0.5, 12, 12, stone, dark));
+  // buttress towers sit close to wallRadius (their distance from origin is
+  // within a couple percent of it) so they read as built into the wall
+  // rather than freestanding, and the whole keep sits noticeably tighter
+  // than before
+  const baseY = footprintPx * 0.15;
+  const wallRadius = footprintPx * 0.38;
+  g.add(wallRing(wallRadius, 10, 12, stone, dark));
   const buttressSpots = [
-    [footprintPx * 0.44, footprintPx * 0.1], [-footprintPx * 0.4, footprintPx * 0.24],
-    [footprintPx * 0.1, -footprintPx * 0.46], [-footprintPx * 0.2, -footprintPx * 0.4],
+    [footprintPx * 0.34, footprintPx * 0.08], [-footprintPx * 0.3, footprintPx * 0.18],
+    [footprintPx * 0.08, -footprintPx * 0.35], [-footprintPx * 0.15, -footprintPx * 0.3],
   ];
   for (const [bx, bz] of buttressSpots) {
-    g.add(slabTower(bx, bz, footprintPx * 0.13, footprintPx * 0.13, 20, stone, dark));
+    g.add(slabTower(bx, bz, footprintPx * 0.1, footprintPx * 0.1, 15, stone, dark));
   }
 
-  const towerH = 46;
-  const tower = box(footprintPx * 0.26, towerH, footprintPx * 0.24, stone);
+  const towerH = 34;
+  const towerW = footprintPx * 0.2, towerD = footprintPx * 0.18;
+  const tower = box(towerW, towerH, towerD, stone);
   tower.position.set(0, baseY + towerH / 2, 0);
   g.add(tower);
-  g.add(flaredCap(footprintPx * 0.22, baseY + towerH + 4, dark));
-  g.add(roofline(footprintPx * 0.3, baseY + towerH, false, dark));
+  g.add(flaredCap(footprintPx * 0.17, baseY + towerH + 3, dark));
+  g.add(roofline(footprintPx * 0.22, baseY + towerH, false, dark));
+  // dark window slits down the keep's front face — the reference shows
+  // narrow windows on the main tower, absent from the old plain box
+  for (let i = 0; i < 3; i++) {
+    const win = box(1.6, 2.6, 0.3, '#0c0d10');
+    win.position.set(0, baseY + towerH * (0.28 + i * 0.24), towerD / 2 + 0.2);
+    g.add(win);
+  }
 
-  for (const [hx, hz, hw] of [[footprintPx * 0.06, footprintPx * 0.16, footprintPx * 0.2], [-footprintPx * 0.12, footprintPx * 0.08, footprintPx * 0.16]]) {
+  for (const [hx, hz, hw] of [[footprintPx * 0.05, footprintPx * 0.12, footprintPx * 0.15], [-footprintPx * 0.09, footprintPx * 0.06, footprintPx * 0.12]]) {
     const hh = hw * 0.7;
     const hall = box(hw, hh, hw * 0.7, stone);
     hall.position.set(hx, baseY + hh / 2, hz);
@@ -735,19 +754,19 @@ function createTownhallDragonstone(faction, footprintPx) {
     g.add(hallRoof);
   }
 
-  for (const [ex, ez] of [[footprintPx * 0.3, footprintPx * 0.2], [-footprintPx * 0.25, -footprintPx * 0.15]]) {
-    const glow = ember(1.8);
-    glow.position.set(ex, footprintPx * 0.1 + 2, ez);
+  for (const [ex, ez] of [[footprintPx * 0.22, footprintPx * 0.15], [-footprintPx * 0.19, -footprintPx * 0.11]]) {
+    const glow = ember(1.5);
+    glow.position.set(ex, footprintPx * 0.08 + 1.6, ez);
     g.add(glow);
   }
 
-  const banner = box(1.6, footprintPx * 0.24, 1.6, faction.colorPrimary);
-  banner.position.set(0, baseY + towerH + 8, 0);
+  const banner = box(1.4, footprintPx * 0.18, 1.4, faction.colorPrimary);
+  banner.position.set(0, baseY + towerH + 6, 0);
   g.add(banner);
-  g.add(dragonstoneOutcrop(-footprintPx * 0.9, -footprintPx * 0.15, footprintPx * 0.22));
+  g.add(dragonstoneOutcrop(-footprintPx * 0.65, -footprintPx * 0.11, footprintPx * 0.17));
 
   g.userData.wallH = baseY;
-  g.userData.roofTopY = baseY + towerH + 10;
+  g.userData.roofTopY = baseY + towerH + 7;
   return g;
 }
 
