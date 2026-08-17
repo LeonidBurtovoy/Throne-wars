@@ -27,7 +27,19 @@ async function loadOne(name) {
       box.getSize(size);
       const center = new THREE.Vector3();
       box.getCenter(center);
-      out.push({ name, size: { x: +size.x.toFixed(3), y: +size.y.toFixed(3), z: +size.z.toFixed(3) }, min: { x: +box.min.x.toFixed(3), y: +box.min.y.toFixed(3), z: +box.min.z.toFixed(3) }, max: { x: +box.max.x.toFixed(3), y: +box.max.y.toFixed(3), z: +box.max.z.toFixed(3) } });
+      const bones = [];
+      gltf.scene.traverse((o) => { if (o.isBone) bones.push(o.name); });
+      const meshNames = [];
+      gltf.scene.traverse((o) => { if (o.isMesh || o.isSkinnedMesh) meshNames.push(o.name + (o.isSkinnedMesh ? ' (skinned)' : '')); });
+      out.push({
+        name,
+        size: { x: +size.x.toFixed(3), y: +size.y.toFixed(3), z: +size.z.toFixed(3) },
+        min: { x: +box.min.x.toFixed(3), y: +box.min.y.toFixed(3), z: +box.min.z.toFixed(3) },
+        max: { x: +box.max.x.toFixed(3), y: +box.max.y.toFixed(3), z: +box.max.z.toFixed(3) },
+        animations: gltf.animations.map((a) => ({ name: a.name, duration: +a.duration.toFixed(2) })),
+        boneCount: bones.length,
+        meshNames,
+      });
       resolve();
     }, undefined, (err) => { out.push({ name, error: String(err) }); resolve(); });
   });

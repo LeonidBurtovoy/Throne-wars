@@ -1,13 +1,14 @@
-// dumps bounding-box size/min/max for a list of GLB files (relative to
-// assets/kenney/castle-kit/) by actually loading them through Three.js's
-// GLTFLoader in real headless Chrome - so composing kit pieces uses
-// measured dimensions instead of guessed ones.
-// Usage: node inspect.js file1.glb,file2.glb,...
+// dumps bounding-box size/min/max/animations/bones for a list of GLB files
+// by actually loading them through Three.js's GLTFLoader in real headless
+// Chrome - so composing kit pieces uses measured dimensions instead of
+// guessed ones.
+// Usage: node inspect.js file1.glb,file2.glb,... [base-path]
 const { chromium } = require('playwright-core');
 
 async function main() {
   const files = process.argv[2] || '';
-  const url = `http://127.0.0.1:8099/.devtools/inspect.html?files=${encodeURIComponent(files)}&base=${encodeURIComponent('/assets/kenney/castle-kit/')}`;
+  const base = process.argv[3] || '/assets/kenney/castle-kit/';
+  const url = `http://127.0.0.1:8099/.devtools/inspect.html?files=${encodeURIComponent(files)}&base=${encodeURIComponent(base)}`;
   const browser = await chromium.launch({ channel: 'chrome', headless: true });
   const page = await browser.newPage();
   let result = null;

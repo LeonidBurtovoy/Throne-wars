@@ -41,6 +41,40 @@ yet. It already caught a real bug this way: the camera elevation angle
 facade detail — fixed to 32deg after comparing screenshots at several
 angles.
 
+## Network multiplayer QA: two real headless browsers
+
+`.devtools/net-test.js` drives two independent headless Chrome contexts
+(`browser.newContext()` twice) through the real host/join UI flow with
+real PeerJS/WebRTC — not mocked. Previously the only guidance here was
+"can't test this, need two real devices"; that's no longer true. Usage:
+`node net-test.js` (reads `GAME_URL` env var, defaults to
+`http://127.0.0.1:8099/index.html`). It prints the room code, whether
+each side reached `#game-screen`, any `#boot-error` text, console/
+pageerror logs, and saves `/tmp/net_host.png` / `/tmp/net_guest.png`.
+
+This caught a real bug 2026-08-17: `PeerLink.js`'s `new Peer(...)` calls
+had no `config`/`iceServers` option, so PeerJS fell back to its STUN-only
+default (no TURN relay). Whenever direct NAT traversal isn't possible
+(different ISPs, mobile networks, restrictive routers - a common case,
+not an edge case), the WebRTC data channel never opens on EITHER side,
+with no error event firing at all - both host and guest just hang on
+"Ждём соперника…"/"Подключаемся…" forever. Fixed by adding a public TURN
+server (openrelay via metered.ca) alongside STUN, plus a 25s connection
+timeout that now rejects with a clear error instead of hanging silently
+forever regardless of the cause.
+
+Caveat: this sandboxed environment's own network did NOT successfully
+complete a real WebRTC connection even after adding TURN (confirmed via
+two-browser test, host eventually hit the new 25s timeout and showed the
+error message correctly - so the timeout/error-UX fix is verified, but
+end-to-end connectivity isn't). Inconclusive whether that reflects a
+genuine remaining bug or just this sandbox's own restricted outbound
+UDP/WebRTC traffic (DNS to the TURN host resolves fine directly against
+8.8.8.8; a plain curl through the sandbox's default resolver hung). If a
+future report says multiplayer still doesn't connect after this fix,
+re-run net-test.js first — a real error message reaching the UI (not a
+silent hang) narrows it down a lot faster than reading the code again.
+
 ## Real modeled assets (Kenney Castle Kit) — started 2026-08-17
 
 Both castles (`src/render3d/kit.js`) are composed from real Kenney "Castle
