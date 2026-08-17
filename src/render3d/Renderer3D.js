@@ -87,8 +87,21 @@ export class Renderer3D {
     // further out so it only affects the far edge of view, not most of it
     this.scene.fog = new THREE.Fog(SKY, 1500, 3600);
 
+    // world-units-per-pixel MUST match on both axes (matching the old 2D
+    // camera's plain 1:1 mapping), or the whole scene reads as visibly
+    // stretched/squashed — a previous version widened only the vertical
+    // frustum (halfH * 1.5) to give tall building models extra headroom
+    // near the top edge, which threw the horizontal/vertical scale out of
+    // sync and squashed everything vertically by that same 1.5x. A uniform
+    // margin on all four sides gives the same headroom without distorting
+    // the aspect ratio.
     const halfW = viewportWidth / 2, halfH = viewportHeight / 2;
-    this.camera = new THREE.OrthographicCamera(-halfW, halfW, halfH * 1.5, -halfH * 1.5, 1, 4000);
+    const FRUSTUM_MARGIN = 1.15;
+    this.camera = new THREE.OrthographicCamera(
+      -halfW * FRUSTUM_MARGIN, halfW * FRUSTUM_MARGIN,
+      halfH * FRUSTUM_MARGIN, -halfH * FRUSTUM_MARGIN,
+      1, 4000
+    );
     this._elevRad = THREE.MathUtils.degToRad(55);
     this._camDist = 1200;
 
