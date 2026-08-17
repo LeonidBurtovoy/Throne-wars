@@ -1,0 +1,9 @@
+{
+  "name": "throne-wars-devtools",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Local-only visual QA tooling (screenshots of the 3D renderer) - not part of the deployed game.",
+  "dependencies": {
+    "playwright-core": "^1.62.1"
+  }
+}
