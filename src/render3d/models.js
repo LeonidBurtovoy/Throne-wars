@@ -1071,29 +1071,38 @@ export function createSteelNodeModel() {
 // of a flat green swatch
 export function createGrassTuft(seed = 0) {
   const g = new THREE.Group();
-  const bladeShades = ['#4a8a3a', '#3f7a32', '#5a9a44'];
-  for (let i = 0; i < 3; i++) {
-    const jitterX = ((seed * 11 + i * 9) % 9) - 4;
-    const jitterZ = ((seed * 7 + i * 13) % 9) - 4;
-    const h = 2.4 + ((seed + i * 5) % 4) / 2;
-    const blade = box(0.5, h, 2.2, bladeShades[(seed + i) % 3], { roughness: 0.9 });
-    blade.position.set(jitterX, h / 2, jitterZ);
+  // a rounded, brighter-than-terrain clump as the base — thin dark blades
+  // alone anti-aliased into dust-speck dots at normal gameplay zoom
+  // (indistinguishable from noise); a bright clump reads as an actual
+  // patch of grass at a glance, with blade spikes on top for close-up detail
+  const clumpColor = seed % 3 === 0 ? '#6bb84f' : seed % 3 === 1 ? '#5fa845' : '#7ac257';
+  const clump = ball(2.6 + (seed % 4) / 4, clumpColor, { roughness: 0.85 });
+  clump.scale.set(1.3, 0.55, 1.3);
+  clump.position.y = 1;
+  g.add(clump);
+  const bladeShades = ['#4a8a3a', '#5fa845', '#7ac257'];
+  for (let i = 0; i < 4; i++) {
+    const jitterX = ((seed * 11 + i * 9) % 7) - 3;
+    const jitterZ = ((seed * 7 + i * 13) % 7) - 3;
+    const h = 3.2 + ((seed + i * 5) % 4) / 2;
+    const blade = box(0.6, h, 0.6, bladeShades[(seed + i) % 3], { roughness: 0.85 });
+    blade.position.set(jitterX, h / 2 + 0.6, jitterZ);
+    blade.rotation.z = 0.25 * (((seed + i) % 3) - 1);
     blade.rotation.y = (((seed + i) * 47) % 100) / 100 * Math.PI * 2;
-    blade.rotation.z = 0.18 * (((seed + i) % 3) - 1);
     g.add(blade);
   }
   const trinket = (seed * 31) % 100;
-  if (trinket > 92) { // rare wildflower cluster
+  if (trinket > 90) { // rare wildflower cluster
     const petal = trinket % 2 === 0 ? '#e8d278' : '#dcc2d2';
-    for (const [ox, oz] of [[0, 0], [1.3, 0.5], [-1.1, 0.6]]) {
-      const flower = ball(0.6, petal, { roughness: 0.6 });
-      flower.position.set(ox, 2, oz);
+    for (const [ox, oz] of [[0, 0], [1.6, 0.6], [-1.3, 0.7]]) {
+      const flower = ball(0.75, petal, { roughness: 0.6 });
+      flower.position.set(ox, 2.6, oz);
       g.add(flower);
     }
-  } else if (trinket > 80) { // small pebble underfoot
+  } else if (trinket > 78) { // small pebble underfoot
     const pebble = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshStandardMaterial({ color: '#5a5648', flatShading: true }));
     pebble.scale.set(1, 0.55, 0.9);
-    pebble.position.set(1, 0.5, -1);
+    pebble.position.set(1.6, 0.5, -1.6);
     pebble.castShadow = true; pebble.receiveShadow = true;
     g.add(pebble);
   }

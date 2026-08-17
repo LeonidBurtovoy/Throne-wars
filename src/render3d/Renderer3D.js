@@ -216,8 +216,10 @@ export class Renderer3D {
           // deterministic per-tile mottling so a solid terrain color doesn't
           // read as one dead-flat swatch per tile — cheap "texture" without
           // an actual texture map, stable across frames since it's seeded
-          // purely from tile coordinates
-          c.multiplyScalar(0.88 + tileNoise(tx, ty) * 0.24);
+          // purely from tile coordinates. Kept subtle (was 0.88-1.12) since
+          // the wider range read as a tile-grained static/noise pattern
+          // rather than a smooth painterly variation.
+          c.multiplyScalar(0.94 + tileNoise(tx, ty) * 0.12);
           if (type === TILE_TYPE.WATER) {
             // a moving glint recomputed on this same throttled cadence —
             // choppy rather than a smooth shader-driven wave, but reads as
@@ -326,6 +328,10 @@ export class Renderer3D {
         if (!fog.isVisible(tx, ty)) continue; // only decorate ground currently in sight
         const type = map.getTile(tx, ty);
         if (type !== TILE_TYPE.GRASS && type !== TILE_TYPE.ROCK) continue; // resource tiles already get a tree/ore prop
+        // a tuft on every single grass tile packed them into a dense,
+        // fine-grained pattern that read as static/noise rather than
+        // grass at normal gameplay zoom — thin out to roughly half
+        if (type === TILE_TYPE.GRASS && tileNoise(tx, ty) < 0.5) continue;
         const key = tx + ',' + ty;
         let entry = this._detailMeshes.get(key);
         if (entry && entry.type !== type) {
