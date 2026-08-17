@@ -41,6 +41,69 @@ yet. It already caught a real bug this way: the camera elevation angle
 facade detail — fixed to 32deg after comparing screenshots at several
 angles.
 
+## Real modeled assets (Kenney Castle Kit) — started 2026-08-17
+
+Both castles (`src/render3d/kit.js`) are composed from real Kenney "Castle
+Kit" pieces (CC0, `assets/kenney/castle-kit/`, ~2.2MB committed to the
+repo) instead of hand-placed box/cylinder/cone primitives — a dramatic
+visual upgrade discovered by actually looking at screenshots and deciding
+the primitive approach had a hard ceiling. Everything else (units, other
+buildings, resource props) is still procedural in `models.js` — this was
+step one of a larger "replace primitives with real assets" pass, not the
+whole thing. Natural next step if asked to continue: units need a rigged
+character pack (e.g. Kenney "Blocky Characters", also CC0, already test-
+downloaded during this pass) plus actual `AnimationMixer` wiring in
+`Renderer3D.js` — a materially bigger job than the castles (which are
+static prop composition) since it touches animation state per game unit
+state (idle/walk/attack/gather), not just one-time geometry placement.
+
+Pipeline, if extending this to more assets:
+1. Find a pack on kenney.nl (CC0, no attribution required). Direct zip
+   download links are inside the asset page's HTML behind a "Continue
+   without donating" link (`grep -n '\.zip' ` on the fetched page), not
+   discoverable from the static listing alone.
+2. Unzip, take the `Models/GLB format/` folder (self-contained-ish; some
+   pieces reference `Textures/colormap.png` by relative path despite
+   being .glb, so that file needs to ship alongside the pieces, not just
+   the pieces themselves — a `THREE.GLTFLoader: Couldn't load texture`
+   console warning is the tell if it's missing).
+3. Copy needed pieces into `assets/kenney/<pack>/`, plus its
+   `License.txt` for provenance (renamed `LICENSE-<pack>.txt` to avoid
+   colliding with other packs' license files in the same parent dir).
+4. Measure real piece dimensions before composing anything —
+   `.devtools/inspect.js '<file1>.glb,<file2>.glb,...'` loads each
+   through a real GLTFLoader in headless Chrome and dumps bounding-box
+   size/min/max. Kenney's kits are grid-modular (this pack's pieces are
+   all 1x1 kit-tile footprint, walls/tower-bases 1.31 tall, roofs
+   variable) — guessing dimensions instead of measuring wastes rounds.
+5. Preview pieces visually before wiring into the real game —
+   `.devtools/preview.html?files=a.glb,b.glb&base=/assets/.../` laid out
+   in a grid, screenshotted via `node screenshot.js out.png --raw` with
+   `GAME_URL` pointed at the preview page (`--raw` skips the normal
+   menu-click boot sequence). This is what caught the actual Kenney art
+   style (a cohesive tan sandstone texture, not flat-colored) before any
+   composition work started.
+6. GLTFLoader itself imports THREE via the bare `'three'` specifier
+   internally (unlike the rest of this project, which imports THREE via
+   a direct unpkg URL) — needs the import map already added to
+   `index.html`'s `<head>` (and to `.devtools/inspect.html`/
+   `preview.html` for standalone testing). Both import styles resolve to
+   the same underlying module under that map, so they coexist safely;
+   no need to convert the rest of the codebase's imports.
+7. Loading is inherently async; the rest of this codebase's model
+   factories are synchronous. Resolved by preloading ALL needed pieces
+   once during boot (`preloadCastleKit()`, awaited in each of `main.js`'s
+   three boot functions before `runLoop` starts) and caching the loaded
+   templates; the actual per-building factory functions just clone from
+   the cache and stay synchronous like every other factory in
+   `models.js`. `kit.piece()` throws loudly if called before preload
+   completes — a signal to check the await is actually in place, not a
+   bug to work around.
+8. The custom Python bundler used for headless logic tests (see below)
+   needed its `is_external()` check extended to also skip bare
+   specifiers (`three`, `three/addons/...`), not just `http(s)://` URLs
+   — otherwise it tries to resolve them as local files and fails.
+
 ## Testing game logic (headless, no browser)
 
 Pure simulation logic (Unit/Building/AI/Combat/Economy/Selection/

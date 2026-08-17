@@ -3,6 +3,7 @@ import { generateMap } from './map/mapData.js';
 import { Game } from './engine/Game.js';
 import { InputHandler } from './engine/Input.js';
 import { Renderer3D } from './render3d/Renderer3D.js';
+import { preloadCastleKit } from './render3d/kit.js';
 import { initMinimap } from './ui/HUD.js';
 import { hostRoom, joinRoom, makeLink } from './net/PeerLink.js';
 import { NetworkHost } from './net/NetworkHost.js';
@@ -76,7 +77,8 @@ try {
   startBtn.addEventListener('click', () => {
     try {
       showScreen('game-screen');
-      bootLocalGame(selectedFaction, selectedMap, selectedOpponents);
+      bootLocalGame(selectedFaction, selectedMap, selectedOpponents)
+        .catch((err) => reportFatal('Ошибка запуска игры (bootGame)', err));
     } catch (err) {
       reportFatal('Ошибка запуска игры (bootGame)', err);
     }
@@ -139,7 +141,8 @@ try {
       link.send({ type: 'start', mapId: netMap, hostFaction: netFaction });
       setNetStatus('Соперник подключился! Начинаем битву…');
       showScreen('game-screen');
-      bootNetworkHostGame(netFaction, netMap, link);
+      bootNetworkHostGame(netFaction, netMap, link)
+        .catch((err) => reportFatal('Ошибка запуска игры (bootNetworkHostGame)', err));
     } catch (err) {
       setNetStatus('Не удалось создать комнату: ' + (err && err.message ? err.message : err), true);
       netHostStartBtn.disabled = false;
@@ -159,7 +162,8 @@ try {
       link.onMessage((msg) => {
         if (msg.type === 'start') {
           showScreen('game-screen');
-          bootNetworkGuestGame(msg.hostFaction, msg.mapId, link);
+          bootNetworkGuestGame(msg.hostFaction, msg.mapId, link)
+            .catch((err) => reportFatal('Ошибка запуска игры (bootNetworkGuestGame)', err));
         }
       });
     } catch (err) {
@@ -219,7 +223,11 @@ function runLoop(game, extraTick) {
   requestAnimationFrame(loop);
 }
 
-function bootLocalGame(faction, mapId, numOpponents) {
+// castle-kit pieces (see render3d/kit.js) are loaded once, before the
+// first render() call — every building factory that uses them assumes the
+// cache is already populated and throws otherwise, so this must be
+// awaited before runLoop starts on every boot path
+async function bootLocalGame(faction, mapId, numOpponents) {
   const canvas = prepareCanvas();
   const { map, starts, name } = generateMap(mapId);
   const game = new Game({
@@ -234,10 +242,11 @@ function bootLocalGame(faction, mapId, numOpponents) {
   game.renderer3D = new Renderer3D(canvas, VIEWPORT.width, VIEWPORT.height);
   game.input = new InputHandler(canvas, game);
   initMinimap(game);
+  await preloadCastleKit();
   runLoop(game);
 }
 
-function bootNetworkHostGame(faction, mapId, link) {
+async function bootNetworkHostGame(faction, mapId, link) {
   const canvas = prepareCanvas();
   const { map, starts, name } = generateMap(mapId);
   const game = new Game({
@@ -257,10 +266,11 @@ function bootNetworkHostGame(faction, mapId, link) {
   game.renderer3D = new Renderer3D(canvas, VIEWPORT.width, VIEWPORT.height);
   game.input = new InputHandler(canvas, game);
   initMinimap(game);
+  await preloadCastleKit();
   runLoop(game, (dt) => host.tick(dt));
 }
 
-function bootNetworkGuestGame(hostFaction, mapId, link) {
+async function bootNetworkGuestGame(hostFaction, mapId, link) {
   const canvas = prepareCanvas();
   const { map, starts, name } = generateMap(mapId);
   const game = new Game({
@@ -279,5 +289,6 @@ function bootNetworkGuestGame(hostFaction, mapId, link) {
   game.renderer3D = new Renderer3D(canvas, VIEWPORT.width, VIEWPORT.height);
   game.input = new InputHandler(canvas, game);
   initMinimap(game);
+  await preloadCastleKit();
   runLoop(game);
 }

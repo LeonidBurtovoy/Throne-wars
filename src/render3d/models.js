@@ -1,14 +1,17 @@
 // Procedural 3D "model" templates built from plain Three.js primitives
 // (boxes/spheres/cones/cylinders/torus) — there is no 3D modeling pipeline
-// in this project (no build step, no asset files), so every unit/building
-// is assembled from geometric shapes rather than sculpted/textured models.
-// Every distinguishing feature carried over from the old 2D pixel-art
-// version (per-building silhouettes, per-unit props, Stark ice/wolf vs
-// Targaryen fire/dragon motifs) is rebuilt here in primitives instead of
-// canvas paths, so nothing from the accumulated art direction is lost —
-// it's translated, not discarded.
+// in this project (no build step), so most units/buildings are assembled
+// from geometric shapes rather than sculpted/textured models. The two
+// castles are the first exception: they're composed from real authored
+// pieces (Kenney "Castle Kit", CC0) via kit.js — see that file for how
+// pieces are loaded/cached/cloned. Everything else here still follows the
+// original approach: every distinguishing feature carried over from the
+// old 2D pixel-art version (per-building silhouettes, per-unit props,
+// Stark ice/wolf vs Targaryen fire/dragon motifs) rebuilt in primitives
+// instead of canvas paths.
 
 import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
+import * as kit from './kit.js';
 
 // MeshStandardMaterial (PBR-ish roughness/metalness) instead of Lambert —
 // responds to light much more realistically, and lets metal props (swords,
@@ -541,37 +544,6 @@ function wallRing(radius, wallH, segments, color, trimColor) {
   return g;
 }
 
-// a round drum tower with a modest hollow well near the top (not a gaping
-// hole) ringed by a solid crenellated rim — fewer, bigger merlons than
-// before for the same "reads as a blob of dots at a distance" reason as
-// wallRing above — plus the front-facing icicle row already used elsewhere
-function drumTower(x, z, r, h, color, trimColor) {
-  const g = new THREE.Group();
-  const shaft = cyl(r, r * 1.12, h, color, 12);
-  shaft.position.set(x, h / 2, z);
-  g.add(shaft);
-  const dark = new THREE.Mesh(new THREE.CircleGeometry(r * 0.7, 12), new THREE.MeshBasicMaterial({ color: '#14161a' }));
-  dark.rotation.x = -Math.PI / 2;
-  dark.position.set(x, h - 0.2, z);
-  g.add(dark);
-  // the rim is stone-colored, not trim — it just widens the tower top
-  // slightly; making it bright/white the same way the merlons are made the
-  // whole tower top read as a pale ring instead of grey stone with white
-  // teeth on top
-  const lip = cyl(r * 1.15, r * 1.1, 1.1, color, 12);
-  lip.position.set(x, h + 0.4, z);
-  g.add(lip);
-  const merlonCount = Math.max(5, Math.round(r / 2.6));
-  for (let i = 0; i < merlonCount; i++) {
-    const a = (i / merlonCount) * Math.PI * 2;
-    const merlon = box(2.4, 3.2, 2.4, trimColor, { roughness: 0.9 });
-    merlon.position.set(x + Math.cos(a) * r, h + 2.6, z + Math.sin(a) * r);
-    g.add(merlon);
-  }
-  icicleRow(g, x, h - 1, z, r * 2.2);
-  return g;
-}
-
 // a small walled grove off to one side — dark pines around a single
 // blood-red weirwood — Winterfell's other unmistakable visual cue besides
 // the round towers, and previously missing entirely
@@ -598,99 +570,44 @@ function godswood(offsetX, offsetZ, radius) {
   return g;
 }
 
-// Winterfell: a round curtain wall enclosing a cluster of open-topped drum
-// towers at irregular heights around a long main hall, plus a walled
-// godswood off to one side — matches the real castle's defining shapes
-// instead of just a hall with a couple of freestanding towers.
-function createTownhallWinterfell(faction, footprintPx) {
+// Winterfell: composed from real Kenney Castle Kit pieces (see kit.js) —
+// a rectangular curtain wall with a tower stacked at each corner (one
+// noticeably taller "Great Keep"), a cool icy-blue tint over the kit's
+// natural sandstone texture for house identity, plus the hand-built
+// godswood off to one side. Replaces the old hand-placed box/cylinder/cone
+// approximation with actual modeled architecture.
+function createTownhallWinterfellKit(faction) {
   const g = new THREE.Group();
-  const stone = '#6b7280';
-  const trim = '#e7edf3';
-  const wallRadius = footprintPx * 0.46;
-  g.add(wallRing(wallRadius, 9, 16, stone, trim));
-
-  const hall = box(footprintPx * 0.48, 13, footprintPx * 0.32, stone);
-  hall.position.set(footprintPx * 0.05, 6.5, footprintPx * 0.03);
-  g.add(hall);
-  const hallRoof = roofline(footprintPx * 0.48, 13, true, trim);
-  hallRoof.position.set(footprintPx * 0.05, 0, footprintPx * 0.03);
-  g.add(hallRoof);
-
-  // two dominant interior keeps plus a few smaller round turrets built
-  // right against the curtain wall (their distance from origin close to
-  // wallRadius) — matches the reference photo's mix of a couple of tall
-  // keeps with smaller turrets studding the wall itself, tighter overall
-  // than the old spread-out cluster of similarly-sized towers
-  const towers = [
-    { x: -footprintPx * 0.14, z: -footprintPx * 0.15, r: footprintPx * 0.095, h: 30 }, // the Great Keep — tallest
-    { x: footprintPx * 0.14, z: -footprintPx * 0.16, r: footprintPx * 0.075, h: 22 },
-    { x: footprintPx * 0.42, z: footprintPx * 0.1, r: footprintPx * 0.055, h: 14 }, // wall turret
-    { x: -footprintPx * 0.4, z: footprintPx * 0.16, r: footprintPx * 0.06, h: 16 }, // wall turret
-    { x: -footprintPx * 0.02, z: footprintPx * 0.2, r: footprintPx * 0.065, h: 18 },
+  const tint = '#c3d3e6';
+  const corners = [
+    { x: -3, z: -2.5, extraMid: 2 }, // the Great Keep — tallest
+    { x: 3, z: -2.5, extraMid: 0 },
+    { x: 3, z: 2.5, extraMid: 0 },
+    { x: -3, z: 2.5, extraMid: 1 },
   ];
-  let tallest = towers[0];
-  for (const t of towers) {
-    if (t.h > tallest.h) tallest = t;
-    g.add(drumTower(t.x, t.z, t.r, t.h, stone, trim));
+  let tallest = corners[0];
+  for (const c of corners) {
+    const stack = kit.towerStack(c.x, c.z, c.extraMid, 'tower-square-roof.glb', tint);
+    g.add(stack);
+    c.topYUnits = stack.userData.topYUnits;
+    if (c.topYUnits > (tallest.topYUnits || 0)) tallest = c;
   }
-  // small courtyard roofs peeking over the curtain wall, so the inside
-  // doesn't read as empty
-  for (const [cx, cz, cw] of [[footprintPx * 0.02, -footprintPx * 0.01, 0.13], [footprintPx * 0.12, footprintPx * 0.14, 0.09]]) {
-    const roof = cone(footprintPx * cw, footprintPx * cw * 0.9, trim, 4);
-    roof.rotation.y = Math.PI / 4;
-    roof.position.set(cx, 7.5, cz);
-    g.add(roof);
-  }
+  g.add(kit.wallRun(-2.5, -2.5, 2.5, -2.5, tint));
+  g.add(kit.wallRun(-2.5, 2.5, 2.5, 2.5, tint));
+  g.add(kit.wallRun(-3, -2, -3, 2, tint));
+  g.add(kit.wallRun(3, -2, 3, 2, tint));
 
-  const banner = box(1.4, footprintPx * 0.18, 1.4, faction.colorPrimary);
-  banner.position.set(tallest.x, tallest.h + footprintPx * 0.1, tallest.z);
-  g.add(banner);
-  g.add(godswood(-footprintPx * 0.62, -footprintPx * 0.03, footprintPx * 0.2));
+  const flag = kit.piece('flag.glb', faction.colorPrimary);
+  flag.position.set(tallest.x * kit.KIT_UNIT, tallest.topYUnits * kit.KIT_UNIT, tallest.z * kit.KIT_UNIT);
+  g.add(flag);
 
-  g.userData.wallH = 13;
-  g.userData.roofTopY = tallest.h;
+  g.add(godswood(-kit.KIT_UNIT * 4.4, -kit.KIT_UNIT * 0.3, kit.KIT_UNIT * 1.4));
+
+  g.userData.wallH = 1.31 * kit.KIT_UNIT;
+  g.userData.roofTopY = tallest.topYUnits * kit.KIT_UNIT;
   return g;
 }
 
-// a flared, wing-like roof cap radiating outward from a tower's peak —
-// Dragonstone's single most recognizable silhouette, approximated with
-// angled flat panels instead of a plain cone since there's no way to
-// sculpt the real pagoda-like shape out of primitives
-function flaredCap(r, y, color, count = 4) {
-  const g = new THREE.Group();
-  for (let i = 0; i < count; i++) {
-    const a = (i / count) * Math.PI * 2 + Math.PI / 4;
-    const panel = box(r * 1.1, 1, r * 0.9, color, { roughness: 0.8 });
-    panel.position.set(Math.cos(a) * r * 0.45, y, Math.sin(a) * r * 0.45);
-    panel.rotation.y = a;
-    panel.rotation.x = -0.5;
-    g.add(panel);
-  }
-  return g;
-}
-
-// a rectangular buttress tower with a simple pyramidal cap — the angular
-// counterpart to Winterfell's round drumTower, giving Dragonstone's wall a
-// straight-walled silhouette instead of round towers in a different color
-function slabTower(x, z, w, d, h, color, capColor) {
-  const g = new THREE.Group();
-  const shaft = box(w, h, d, color, { roughness: 0.92 });
-  shaft.position.set(x, h / 2, z);
-  g.add(shaft);
-  // four corner merlon blocks below the cap, matching wallRing/drumTower's
-  // chunkier crenellation — a bare pyramidal cap on a plain box read as too
-  // thin/undetailed next to the rest of the fortification
-  for (const [mx, mz] of [[w * 0.32, d * 0.32], [-w * 0.32, d * 0.32], [w * 0.32, -d * 0.32], [-w * 0.32, -d * 0.32]]) {
-    const merlon = box(w * 0.22, h * 0.14, d * 0.22, capColor, { roughness: 0.9 });
-    merlon.position.set(x + mx, h + h * 0.07, z + mz);
-    g.add(merlon);
-  }
-  const cap = cone(Math.max(w, d) * 0.62, h * 0.22, capColor, 4);
-  cap.rotation.y = Math.PI / 4;
-  cap.position.set(x, h + h * 0.28, z);
-  g.add(cap);
-  return g;
-}
 
 // a smaller rocky headland with its own watch-tower, connected visually to
 // the main keep — mirrors the little satellite island/tower off to the
@@ -716,115 +633,63 @@ function dragonstoneOutcrop(offsetX, offsetZ, r) {
   return g;
 }
 
-// Dragonstone: an angular, straight-walled cliffside keep (rectangular
-// buttress towers, not round drum towers) topped by a tall tower with a
-// flared wing-like cap, moss-flecked black volcanic rock, embers where the
-// stone still glows, and a smaller satellite outcrop with its own tower —
-// matches the real castle's jagged, angular silhouette instead of the old
-// single round tower ringed with carved "wing" panels.
-function createTownhallDragonstone(faction, footprintPx) {
+
+// Dragonstone: also composed from Castle Kit pieces, sharing the same
+// wall/tower stack helpers as Winterfell but with a dark volcanic tint, a
+// shorter/different roof cap for a distinct silhouette, plus the hand-
+// built rock mound and satellite outcrop (the kit has no volcanic-rock
+// piece, so those stay procedural like before).
+function createTownhallDragonstoneKit(faction) {
   const g = new THREE.Group();
-  const dark = '#241417';
-  const stone = '#3a3236';
-  // a LOW rock mound, not a mountain: the old version scaled a
-  // footprintPx*0.46 icosahedron by only 0.4 in Y, which at this
-  // building's actual size worked out to a peak taller than the entire
-  // keep (34 units) sitting on it - the rock was silently burying the
-  // whole castle, only obvious once an actual screenshot was taken
+  const tint = '#4a3f3d';
   const rock = new THREE.Mesh(
-    new THREE.IcosahedronGeometry(footprintPx * 0.42, 1),
+    new THREE.IcosahedronGeometry(kit.KIT_UNIT * 3.4, 1),
     new THREE.MeshStandardMaterial({ color: '#1a1214', flatShading: true, roughness: 1 })
   );
-  rock.scale.set(1.25, 0.12, 1.2);
+  rock.scale.set(1.3, 0.1, 1.2);
   rock.position.y = 3;
   rock.castShadow = true; rock.receiveShadow = true;
   g.add(rock);
-  for (const [mx, mz, mr] of [[footprintPx * 0.24, footprintPx * 0.14, 3.2], [-footprintPx * 0.28, -footprintPx * 0.08, 2.7], [footprintPx * 0.08, -footprintPx * 0.23, 2.4]]) {
-    const moss = new THREE.Mesh(new THREE.CircleGeometry(mr, 8), new THREE.MeshStandardMaterial({ color: '#3a4a2c', roughness: 1 }));
-    moss.rotation.x = -Math.PI / 2;
-    moss.position.set(mx, 8, mz);
-    g.add(moss);
-  }
 
-  // buttress towers sit close to wallRadius (their distance from origin is
-  // within a couple percent of it) so they read as built into the wall
-  // rather than freestanding, and the whole keep sits noticeably tighter
-  // than before. baseY brought down near ground level to match where the
-  // wall/buttresses actually sit (they were never offset by baseY at all -
-  // only the keep/halls/banner used it) instead of floating above them.
-  const baseY = 6;
-  const wallRadius = footprintPx * 0.38;
-  g.add(wallRing(wallRadius, 10, 12, stone, dark));
-  const buttressSpots = [
-    [footprintPx * 0.34, footprintPx * 0.08], [-footprintPx * 0.3, footprintPx * 0.18],
-    [footprintPx * 0.08, -footprintPx * 0.35], [-footprintPx * 0.15, -footprintPx * 0.3],
+  const corners = [
+    { x: -2.5, z: -2, extraMid: 2 }, // the main keep — tallest
+    { x: 2.5, z: -2, extraMid: 0 },
+    { x: 2.5, z: 2, extraMid: 0 },
+    { x: -2.5, z: 2, extraMid: 0 },
   ];
-  for (const [bx, bz] of buttressSpots) {
-    g.add(slabTower(bx, bz, footprintPx * 0.1, footprintPx * 0.1, 15, stone, dark));
+  let tallest = corners[0];
+  for (const c of corners) {
+    const stack = kit.towerStack(c.x, c.z, c.extraMid, 'tower-square-top-roof-high.glb', tint);
+    g.add(stack);
+    c.topYUnits = stack.userData.topYUnits;
+    if (c.topYUnits > (tallest.topYUnits || 0)) tallest = c;
   }
+  g.add(kit.wallRun(-2, -2, 2, -2, tint));
+  g.add(kit.wallRun(-2, 2, 2, 2, tint));
+  g.add(kit.wallRun(-2.5, -1.5, -2.5, 1.5, tint));
+  g.add(kit.wallRun(2.5, -1.5, 2.5, 1.5, tint));
 
-  // a noticeably taller keep, and a lighter stone tone than the wall/rock
-  // around it (both very dark) — at the old height and color the keep was
-  // essentially invisible: barely poking above the wall in screen-space at
-  // this camera angle, and blending into the near-identical dark tones
-  // around it. A real keep should dominate the silhouette the way it does
-  // in the reference photo, not disappear into the wall it rises from.
-  const towerH = 54;
-  const keepStone = '#585055';
-  const towerW = footprintPx * 0.2, towerD = footprintPx * 0.18;
-  const tower = box(towerW, towerH, towerD, keepStone);
-  tower.position.set(0, baseY + towerH / 2, 0);
-  g.add(tower);
-  g.add(flaredCap(footprintPx * 0.17, baseY + towerH + 3, dark));
-  g.add(roofline(footprintPx * 0.22, baseY + towerH, false, dark));
-  // dark window slits down the keep's front face — the reference shows
-  // narrow windows on the main tower, absent from the old plain box
-  for (let i = 0; i < 3; i++) {
-    const win = box(1.6, 2.6, 0.3, '#0c0d10');
-    win.position.set(0, baseY + towerH * (0.28 + i * 0.24), towerD / 2 + 0.2);
-    g.add(win);
-  }
-
-  for (const [hx, hz, hw] of [[footprintPx * 0.05, footprintPx * 0.12, footprintPx * 0.15], [-footprintPx * 0.09, footprintPx * 0.06, footprintPx * 0.12]]) {
-    const hh = hw * 0.7;
-    const hall = box(hw, hh, hw * 0.7, stone);
-    hall.position.set(hx, baseY + hh / 2, hz);
-    g.add(hall);
-    const hallRoof = gableRoof(hw, hw * 0.7, baseY + hh, hw * 0.32, dark);
-    hallRoof.position.set(hx, 0, hz);
-    g.add(hallRoof);
-  }
-
-  for (const [ex, ez] of [[footprintPx * 0.22, footprintPx * 0.15], [-footprintPx * 0.19, -footprintPx * 0.11]]) {
+  for (const [ex, ez] of [[2.6, 1.3], [-2.3, -1]]) {
     const glow = ember(1.5);
-    glow.position.set(ex, 6, ez);
+    glow.position.set(ex * kit.KIT_UNIT, 6, ez * kit.KIT_UNIT);
     g.add(glow);
   }
 
-  const banner = box(1.4, footprintPx * 0.18, 1.4, faction.colorPrimary);
-  banner.position.set(0, baseY + towerH + 6, 0);
-  g.add(banner);
-  g.add(dragonstoneOutcrop(-footprintPx * 0.65, -footprintPx * 0.11, footprintPx * 0.17));
+  const flag = kit.piece('flag-pennant.glb', faction.colorPrimary);
+  flag.position.set(tallest.x * kit.KIT_UNIT, tallest.topYUnits * kit.KIT_UNIT, tallest.z * kit.KIT_UNIT);
+  g.add(flag);
 
-  g.userData.wallH = baseY;
-  g.userData.roofTopY = baseY + towerH + 7;
+  g.add(dragonstoneOutcrop(-kit.KIT_UNIT * 3.6, -kit.KIT_UNIT * 0.6, kit.KIT_UNIT * 1.1));
+
+  g.userData.wallH = 1.31 * kit.KIT_UNIT;
+  g.userData.roofTopY = tallest.topYUnits * kit.KIT_UNIT;
   return g;
-}
-
-function icicleRow(parent, x, y, z, width) {
-  for (let i = 0; i < 3; i++) {
-    const off = (i / 2 - 0.5) * width * 0.7;
-    const icicle = cone(0.4, 2 + (i % 2), '#d8ecf5', 4);
-    icicle.rotation.x = Math.PI;
-    icicle.position.set(x + off, y - 1, z + width * 0.42);
-    parent.add(icicle);
-  }
 }
 
 function createTownhall(faction, factionKey, footprintPx) {
   return factionKey === 'targaryen'
-    ? createTownhallDragonstone(faction, footprintPx)
-    : createTownhallWinterfell(faction, footprintPx);
+    ? createTownhallDragonstoneKit(faction)
+    : createTownhallWinterfellKit(faction);
 }
 
 // An actual cultivated field (plowed furrows + scattered wheat sheaves)

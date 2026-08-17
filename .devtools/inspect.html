@@ -1,0 +1,41 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head><body>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+const params = new URLSearchParams(location.search);
+const files = (params.get('files') || '').split(',').filter(Boolean);
+const base = params.get('base') || '/assets/kenney/castle-kit/';
+
+const loader = new GLTFLoader();
+const out = [];
+async function loadOne(name) {
+  return new Promise((resolve) => {
+    loader.load(base + name, (gltf) => {
+      const box = new THREE.Box3().setFromObject(gltf.scene);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const center = new THREE.Vector3();
+      box.getCenter(center);
+      out.push({ name, size: { x: +size.x.toFixed(3), y: +size.y.toFixed(3), z: +size.z.toFixed(3) }, min: { x: +box.min.x.toFixed(3), y: +box.min.y.toFixed(3), z: +box.min.z.toFixed(3) }, max: { x: +box.max.x.toFixed(3), y: +box.max.y.toFixed(3), z: +box.max.z.toFixed(3) } });
+      resolve();
+    }, undefined, (err) => { out.push({ name, error: String(err) }); resolve(); });
+  });
+}
+
+await Promise.all(files.map(loadOne));
+document.title = 'DONE';
+window.__RESULT__ = out;
+console.log('INSPECT_RESULT:' + JSON.stringify(out));
+</script>
+</body></html>

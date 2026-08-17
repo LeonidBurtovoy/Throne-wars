@@ -1,0 +1,65 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<style>html,body{margin:0;height:100%;background:#8fb2da}canvas{display:block}</style>
+</head><body>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+const params = new URLSearchParams(location.search);
+const files = (params.get('files') || '').split(',').filter(Boolean);
+const base = params.get('base') || '/assets/kenney/castle-kit/';
+const grid = Number(params.get('grid') || 4);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(900, 700);
+renderer.shadowMap.enabled = true;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#8fb2da');
+const camera = new THREE.OrthographicCamera(-6, 6, 5, -5, 0.1, 100);
+camera.position.set(8, 7, 8);
+camera.lookAt(0, 1, 0);
+
+scene.add(new THREE.HemisphereLight('#cfe0f7', '#4a4030', 1.1));
+const sun = new THREE.DirectionalLight('#fff6e0', 2.2);
+sun.position.set(5, 10, 5);
+sun.castShadow = true;
+scene.add(sun);
+scene.add(new THREE.AmbientLight('#ffffff', 0.3));
+
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(30, 30), new THREE.MeshStandardMaterial({ color: '#3a7a3a' }));
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+const loader = new GLTFLoader();
+let loaded = 0;
+files.forEach((name, i) => {
+  loader.load(base + name, (gltf) => {
+    const m = gltf.scene;
+    m.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    const col = i % grid;
+    const row = Math.floor(i / grid);
+    m.position.set((col - grid / 2) * 1.6, 0, (row) * 1.6);
+    scene.add(m);
+    loaded++;
+    if (loaded === files.length) { document.title = 'DONE'; }
+  }, undefined, (err) => { console.error('load fail', name, err); loaded++; if (loaded === files.length) document.title = 'DONE'; });
+});
+if (files.length === 0) document.title = 'DONE';
+
+function animate() { renderer.render(scene, camera); requestAnimationFrame(animate); }
+animate();
+</script>
+</body></html>

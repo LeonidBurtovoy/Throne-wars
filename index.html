@@ -5,6 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Throne Wars</title>
 <link rel="stylesheet" href="style.css" />
+<!-- Three.js addon modules (GLTFLoader, used by src/render3d/kit.js to load
+     the Castle Kit assets) import THREE via the bare 'three' specifier
+     internally, which needs this import map to resolve. The rest of the
+     project's files still import THREE via the direct unpkg URL below,
+     which resolves to the exact same module under this map, so both
+     styles coexist safely. -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
 </head>
 <body>
 
