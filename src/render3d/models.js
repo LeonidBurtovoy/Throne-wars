@@ -502,10 +502,14 @@ function postRoof(wallSize, postH, roofColor) {
   return g;
 }
 
-// a ring of short straight wall segments approximating a circular curtain
-// wall (each segment carrying its own crenellated merlons on top, added as
-// its children so they inherit its rotation automatically) — shared by both
-// castles, which otherwise differ in tower shape/material/silhouette
+// a ring of thick straight wall segments approximating a circular curtain
+// wall, each carrying a parapet lip plus a few big, widely-spaced merlons
+// (added as the segment's children so they inherit its rotation
+// automatically) — shared by both castles. Deliberately chunky/blocky
+// (Stronghold-Crusader-style solid stonework) rather than a thin wall
+// dotted with tiny merlons: at normal gameplay zoom, many small shapes
+// blur into visual noise instead of reading as a real fortification —
+// fewer, bigger shapes hold up much better at a distance.
 function wallRing(radius, wallH, segments, color, trimColor) {
   const g = new THREE.Group();
   for (let i = 0; i < segments; i++) {
@@ -514,39 +518,54 @@ function wallRing(radius, wallH, segments, color, trimColor) {
     const x0 = Math.cos(a0) * radius, z0 = Math.sin(a0) * radius;
     const x1 = Math.cos(a1) * radius, z1 = Math.sin(a1) * radius;
     const segLen = Math.hypot(x1 - x0, z1 - z0);
-    const seg = box(2.4, wallH, segLen * 1.04, color);
+    // deterministic per-segment brightness jitter — a plain masonry cue
+    // (individual stone courses) without any real texture map
+    const shade = 0.9 + ((i * 37) % 10) / 10 * 0.18;
+    const segColor = new THREE.Color(color).multiplyScalar(shade);
+    const seg = box(4.2, wallH, segLen * 1.05, segColor, { roughness: 0.95 });
     seg.position.set((x0 + x1) / 2, wallH / 2, (z0 + z1) / 2);
     seg.rotation.y = Math.atan2(x1 - x0, z1 - z0);
     g.add(seg);
-    const merlonCount = Math.max(2, Math.round(segLen / 6));
+    // merlons directly on the stone, no separate parapet lip — a lip wide
+    // enough to read from the near-top-down camera also covered enough of
+    // the grey wall face to make the whole ring look white instead of
+    // stone with white teeth on top
+    const merlonCount = Math.max(1, Math.round(segLen / 10));
     for (let m = 0; m < merlonCount; m++) {
-      const off = (m / (merlonCount - 1) - 0.5) * segLen * 0.85;
-      const merlon = box(2, 2.4, 2, trimColor);
-      merlon.position.set(off, wallH / 2 + 1.2, 0);
+      const off = merlonCount === 1 ? 0 : (m / (merlonCount - 1) - 0.5) * segLen * 0.72;
+      const merlon = box(2.6, 3, 2.6, trimColor, { roughness: 0.9 });
+      merlon.position.set(off, wallH / 2 + 2.3, 0);
       seg.add(merlon);
     }
   }
   return g;
 }
 
-// a round drum tower with a hollow, crenellated top (a dark disc inset near
-// the top, ringed by merlons all the way around) instead of a plain
-// cylinder+cone — the distinctive open-topped roundels of Winterfell's
-// towers, plus the front-facing icicle row already used elsewhere
+// a round drum tower with a modest hollow well near the top (not a gaping
+// hole) ringed by a solid crenellated rim — fewer, bigger merlons than
+// before for the same "reads as a blob of dots at a distance" reason as
+// wallRing above — plus the front-facing icicle row already used elsewhere
 function drumTower(x, z, r, h, color, trimColor) {
   const g = new THREE.Group();
   const shaft = cyl(r, r * 1.12, h, color, 12);
   shaft.position.set(x, h / 2, z);
   g.add(shaft);
-  const dark = new THREE.Mesh(new THREE.CircleGeometry(r * 0.92, 12), new THREE.MeshBasicMaterial({ color: '#0c0e12' }));
+  const dark = new THREE.Mesh(new THREE.CircleGeometry(r * 0.7, 12), new THREE.MeshBasicMaterial({ color: '#14161a' }));
   dark.rotation.x = -Math.PI / 2;
   dark.position.set(x, h - 0.2, z);
   g.add(dark);
-  const merlonCount = Math.max(6, Math.round(r / 1.5));
+  // the rim is stone-colored, not trim — it just widens the tower top
+  // slightly; making it bright/white the same way the merlons are made the
+  // whole tower top read as a pale ring instead of grey stone with white
+  // teeth on top
+  const lip = cyl(r * 1.15, r * 1.1, 1.1, color, 12);
+  lip.position.set(x, h + 0.4, z);
+  g.add(lip);
+  const merlonCount = Math.max(5, Math.round(r / 2.6));
   for (let i = 0; i < merlonCount; i++) {
     const a = (i / merlonCount) * Math.PI * 2;
-    const merlon = box(1.8, 2.6, 1.8, trimColor);
-    merlon.position.set(x + Math.cos(a) * r * 0.96, h + 1.3, z + Math.sin(a) * r * 0.96);
+    const merlon = box(2.4, 3.2, 2.4, trimColor, { roughness: 0.9 });
+    merlon.position.set(x + Math.cos(a) * r, h + 2.6, z + Math.sin(a) * r);
     g.add(merlon);
   }
   icicleRow(g, x, h - 1, z, r * 2.2);
@@ -655,12 +674,20 @@ function flaredCap(r, y, color, count = 4) {
 // straight-walled silhouette instead of round towers in a different color
 function slabTower(x, z, w, d, h, color, capColor) {
   const g = new THREE.Group();
-  const shaft = box(w, h, d, color);
+  const shaft = box(w, h, d, color, { roughness: 0.92 });
   shaft.position.set(x, h / 2, z);
   g.add(shaft);
+  // four corner merlon blocks below the cap, matching wallRing/drumTower's
+  // chunkier crenellation — a bare pyramidal cap on a plain box read as too
+  // thin/undetailed next to the rest of the fortification
+  for (const [mx, mz] of [[w * 0.32, d * 0.32], [-w * 0.32, d * 0.32], [w * 0.32, -d * 0.32], [-w * 0.32, -d * 0.32]]) {
+    const merlon = box(w * 0.22, h * 0.14, d * 0.22, capColor, { roughness: 0.9 });
+    merlon.position.set(x + mx, h + h * 0.07, z + mz);
+    g.add(merlon);
+  }
   const cap = cone(Math.max(w, d) * 0.62, h * 0.22, capColor, 4);
   cap.rotation.y = Math.PI / 4;
-  cap.position.set(x, h + h * 0.11, z);
+  cap.position.set(x, h + h * 0.28, z);
   g.add(cap);
   return g;
 }
@@ -699,26 +726,33 @@ function createTownhallDragonstone(faction, footprintPx) {
   const g = new THREE.Group();
   const dark = '#241417';
   const stone = '#3a3236';
+  // a LOW rock mound, not a mountain: the old version scaled a
+  // footprintPx*0.46 icosahedron by only 0.4 in Y, which at this
+  // building's actual size worked out to a peak taller than the entire
+  // keep (34 units) sitting on it - the rock was silently burying the
+  // whole castle, only obvious once an actual screenshot was taken
   const rock = new THREE.Mesh(
-    new THREE.IcosahedronGeometry(footprintPx * 0.46, 1),
+    new THREE.IcosahedronGeometry(footprintPx * 0.42, 1),
     new THREE.MeshStandardMaterial({ color: '#1a1214', flatShading: true, roughness: 1 })
   );
-  rock.scale.set(1.2, 0.4, 1.15);
-  rock.position.y = footprintPx * 0.08;
+  rock.scale.set(1.25, 0.12, 1.2);
+  rock.position.y = 3;
   rock.castShadow = true; rock.receiveShadow = true;
   g.add(rock);
   for (const [mx, mz, mr] of [[footprintPx * 0.24, footprintPx * 0.14, 3.2], [-footprintPx * 0.28, -footprintPx * 0.08, 2.7], [footprintPx * 0.08, -footprintPx * 0.23, 2.4]]) {
     const moss = new THREE.Mesh(new THREE.CircleGeometry(mr, 8), new THREE.MeshStandardMaterial({ color: '#3a4a2c', roughness: 1 }));
     moss.rotation.x = -Math.PI / 2;
-    moss.position.set(mx, footprintPx * 0.1, mz);
+    moss.position.set(mx, 8, mz);
     g.add(moss);
   }
 
   // buttress towers sit close to wallRadius (their distance from origin is
   // within a couple percent of it) so they read as built into the wall
   // rather than freestanding, and the whole keep sits noticeably tighter
-  // than before
-  const baseY = footprintPx * 0.15;
+  // than before. baseY brought down near ground level to match where the
+  // wall/buttresses actually sit (they were never offset by baseY at all -
+  // only the keep/halls/banner used it) instead of floating above them.
+  const baseY = 6;
   const wallRadius = footprintPx * 0.38;
   g.add(wallRing(wallRadius, 10, 12, stone, dark));
   const buttressSpots = [
@@ -729,9 +763,16 @@ function createTownhallDragonstone(faction, footprintPx) {
     g.add(slabTower(bx, bz, footprintPx * 0.1, footprintPx * 0.1, 15, stone, dark));
   }
 
-  const towerH = 34;
+  // a noticeably taller keep, and a lighter stone tone than the wall/rock
+  // around it (both very dark) — at the old height and color the keep was
+  // essentially invisible: barely poking above the wall in screen-space at
+  // this camera angle, and blending into the near-identical dark tones
+  // around it. A real keep should dominate the silhouette the way it does
+  // in the reference photo, not disappear into the wall it rises from.
+  const towerH = 54;
+  const keepStone = '#585055';
   const towerW = footprintPx * 0.2, towerD = footprintPx * 0.18;
-  const tower = box(towerW, towerH, towerD, stone);
+  const tower = box(towerW, towerH, towerD, keepStone);
   tower.position.set(0, baseY + towerH / 2, 0);
   g.add(tower);
   g.add(flaredCap(footprintPx * 0.17, baseY + towerH + 3, dark));
@@ -756,7 +797,7 @@ function createTownhallDragonstone(faction, footprintPx) {
 
   for (const [ex, ez] of [[footprintPx * 0.22, footprintPx * 0.15], [-footprintPx * 0.19, -footprintPx * 0.11]]) {
     const glow = ember(1.5);
-    glow.position.set(ex, footprintPx * 0.08 + 1.6, ez);
+    glow.position.set(ex, 6, ez);
     g.add(glow);
   }
 
