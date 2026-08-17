@@ -66,24 +66,46 @@ const WOOD = '#6b4a2a';
 const WOOD_LIGHT = '#8a6238';
 const METAL = '#c3c6cf';
 const METAL_DARK = '#71717c';
+// mail has a duller, less mirror-like sheen than the polished plate/blade
+// finish (METAL_FINISH) — a lower metalness plus higher roughness reads as
+// riveted rings rather than a solid steel sheet
+const MAIL = '#888c92';
+const MAIL_FINISH = { roughness: 0.55, metalness: 0.55 };
 
 // ---------------- units ----------------
 
-function humanoid({ legColor, bodyW, bodyH, bodyD, bodyColor, headColor, headR }) {
+function humanoid({ legColor, bodyW, bodyH, bodyD, bodyColor, bodyMatOpts, headColor, headR }) {
   const group = new THREE.Group();
   const legH = bodyH * 0.35;
   const legs = box(bodyW * 0.7, legH, bodyD * 0.6, legColor);
   legs.position.y = legH / 2;
   group.add(legs);
   const torsoH = bodyH * 0.65;
-  const torso = box(bodyW, torsoH, bodyD, bodyColor);
+  const torso = box(bodyW, torsoH, bodyD, bodyColor, bodyMatOpts);
   torso.position.y = legH + torsoH / 2;
   group.add(torso);
   const head = ball(headR, headColor);
   head.position.y = legH + torsoH + headR;
   group.add(head);
   group.userData.torsoTopY = legH + torsoH;
+  group.userData.torsoH = torsoH;
   return group;
+}
+
+// chainmail is approximated (no real texture maps in this project) with a
+// few subtly darker horizontal bands pressed into the mail-colored torso,
+// plus a faction-colored cloth tabard worn over it for identity — mirrors
+// how mail was actually worn under a surcoat historically, and keeps each
+// house visually distinct even though the armor underneath reads the same
+function addMailDetail(group, torsoTopY, torsoH, bodyW, bodyD, tabardColor) {
+  for (let i = 0; i < 3; i++) {
+    const band = box(bodyW * 1.01, 0.6, bodyD * 1.01, '#5c5f64', { roughness: 0.6, metalness: 0.4 });
+    band.position.y = torsoTopY - torsoH * (0.25 + i * 0.28);
+    group.add(band);
+  }
+  const tabard = box(bodyW * 0.72, torsoH * 0.85, 0.6, tabardColor, { roughness: 0.85 });
+  tabard.position.set(0, torsoTopY - torsoH * 0.5, bodyD / 2 + 0.35);
+  group.add(tabard);
 }
 
 function createWorkerModel(faction) {
@@ -114,7 +136,8 @@ function createWorkerModel(faction) {
 }
 
 function createMeleeModel(faction) {
-  const g = humanoid({ legColor: '#2a2620', bodyW: 11, bodyH: 18, bodyD: 8, bodyColor: faction.colorPrimary, headColor: SKIN, headR: 3.6 });
+  const g = humanoid({ legColor: '#2a2620', bodyW: 11, bodyH: 18, bodyD: 8, bodyColor: MAIL, bodyMatOpts: MAIL_FINISH, headColor: SKIN, headR: 3.6 });
+  addMailDetail(g, g.userData.torsoTopY, g.userData.torsoH, 11, 8, faction.colorPrimary);
   const shield = new THREE.Mesh(new THREE.CylinderGeometry(3.6, 3.6, 1, 12), new THREE.MeshStandardMaterial({ color: faction.colorSecondary }));
   shield.rotation.z = Math.PI / 2;
   shield.position.set(-6, 11, 0);
@@ -128,7 +151,8 @@ function createMeleeModel(faction) {
 }
 
 function createRangedModel(faction) {
-  const g = humanoid({ legColor: '#332a1c', bodyW: 9, bodyH: 16, bodyD: 7, bodyColor: faction.colorSecondary, headColor: SKIN, headR: 3.3 });
+  const g = humanoid({ legColor: '#332a1c', bodyW: 9, bodyH: 16, bodyD: 7, bodyColor: MAIL, bodyMatOpts: MAIL_FINISH, headColor: SKIN, headR: 3.3 });
+  addMailDetail(g, g.userData.torsoTopY, g.userData.torsoH, 9, 7, faction.colorSecondary);
   const quiver = cyl(1.4, 1.4, 6, '#5a4630', 6);
   quiver.rotation.z = 0.3;
   quiver.position.set(-4, 12, 3);
@@ -141,7 +165,8 @@ function createRangedModel(faction) {
 }
 
 function createChampionModel(faction) {
-  const g = humanoid({ legColor: '#2a2620', bodyW: 14, bodyH: 22, bodyD: 10, bodyColor: faction.colorPrimary, headColor: SKIN, headR: 4 });
+  const g = humanoid({ legColor: '#2a2620', bodyW: 14, bodyH: 22, bodyD: 10, bodyColor: MAIL, bodyMatOpts: MAIL_FINISH, headColor: SKIN, headR: 4 });
+  addMailDetail(g, g.userData.torsoTopY, g.userData.torsoH, 14, 10, faction.colorPrimary);
   for (const side of [-1, 1]) {
     const pauldron = ball(2.6, METAL, METAL_FINISH);
     pauldron.position.set(side * 7.5, g.userData.torsoTopY - 1.5, 0);
@@ -174,22 +199,66 @@ function createHealerModel(faction) {
 
 function createCavalryModel(faction) {
   const g = new THREE.Group();
-  const horse = box(22, 12, 10, '#5a3a20');
-  horse.position.y = 6;
+  const horseColor = '#5a3a20';
+  const maneColor = darken(horseColor, 0.4);
+  const horse = box(20, 11, 9, horseColor, { roughness: 0.85 });
+  horse.position.y = 10;
   g.add(horse);
+  // legs + hooves — the old model was a bare box with a rider on top and
+  // no visible animal underneath it at all
+  for (const [lx, lz] of [[7, 3.5], [7, -3.5], [-7, 3.5], [-7, -3.5]]) {
+    const leg = cyl(1.3, 1, 10, horseColor, 6);
+    leg.position.set(lx, 5, lz);
+    g.add(leg);
+    const hoof = cyl(1.4, 1.4, 1.6, '#1c1a16', 6);
+    hoof.position.set(lx, 0.8, lz);
+    g.add(hoof);
+  }
+  // neck + head, angled up and forward — there was previously no head at
+  // all, just the torso box
+  const neck = box(6, 9, 6, horseColor, { roughness: 0.85 });
+  neck.position.set(11, 13.5, 0);
+  neck.rotation.z = -0.5;
+  g.add(neck);
+  const head = box(4.5, 5, 5, horseColor, { roughness: 0.85 });
+  head.position.set(15.5, 17.5, 0);
+  g.add(head);
+  const muzzle = box(3, 3, 3.6, '#3a2a18');
+  muzzle.position.set(18.2, 16.3, 0);
+  g.add(muzzle);
+  for (const ez of [1.6, -1.6]) {
+    const ear = cone(0.7, 2.2, horseColor, 4);
+    ear.position.set(14.5, 20.5, ez);
+    g.add(ear);
+  }
+  // mane along the neck ridge and a trailing tail — the two features
+  // explicitly asked for, both absent from the old plain-box horse
+  for (let i = 0; i < 5; i++) {
+    const t = i / 4;
+    const strand = box(1.2, 3.6 - t * 1.6, 0.6, maneColor, { roughness: 1 });
+    strand.position.set(13 - t * 8, 18 - t * 2.5, 0);
+    strand.rotation.z = -0.5;
+    g.add(strand);
+  }
+  const tail = cone(2, 12, maneColor, 6);
+  tail.rotation.z = Math.PI / 2 + 0.25; // tips the cone from pointing +Y to trailing backward-and-down
+  tail.position.set(-10, 11, 0);
+  g.add(tail);
+
   const saddle = box(8, 2, 7, faction.colorSecondary);
-  saddle.position.set(-2, 12.5, 0);
+  saddle.position.set(-1, 16.5, 0);
   g.add(saddle);
-  const rider = humanoid({ legColor: '#2a2620', bodyW: 9, bodyH: 14, bodyD: 7, bodyColor: faction.colorPrimary, headColor: SKIN, headR: 3.2 });
-  rider.position.y = 12;
+  const rider = humanoid({ legColor: '#2a2620', bodyW: 9, bodyH: 14, bodyD: 7, bodyColor: MAIL, bodyMatOpts: MAIL_FINISH, headColor: SKIN, headR: 3.2 });
+  addMailDetail(rider, rider.userData.torsoTopY, rider.userData.torsoH, 9, 7, faction.colorPrimary);
+  rider.position.y = 16;
   g.add(rider);
   const lance = box(1, 1, 20, WOOD);
-  lance.position.set(9, 19, 0);
+  lance.position.set(9, 23, 0);
   lance.rotation.x = Math.PI / 2;
   lance.rotation.z = -0.15;
   g.add(lance);
   const pennant = new THREE.Mesh(new THREE.BoxGeometry(4, 3, 0.2), new THREE.MeshStandardMaterial({ color: faction.colorSecondary, side: THREE.DoubleSide }));
-  pennant.position.set(9, 21, -6);
+  pennant.position.set(9, 25, -6);
   g.add(pennant);
   g.userData.weapon = lance;
   g.userData.legs = rider; // the rider bobs with the horse's gallop
@@ -268,7 +337,12 @@ function createDragonModel(faction) {
   const g = new THREE.Group();
   const primary = faction.colorPrimary;
   const dark = darken(primary, 0.35);
-  const body = box(28, 14, 13, primary);
+  // a scale sheen: lower roughness/higher metalness than a flat-painted
+  // surface, so the hide catches light instead of reading as matte plastic
+  const hideMat = { roughness: 0.45, metalness: 0.4 };
+  const scaleColor = lighten(primary, 0.12);
+  const scaleMat = new THREE.MeshStandardMaterial({ color: scaleColor, roughness: 0.4, metalness: 0.45, flatShading: true });
+  const body = box(28, 14, 13, primary, hideMat);
   body.position.y = 11;
   g.add(body);
   for (let i = 0; i < 4; i++) {
@@ -276,10 +350,21 @@ function createDragonModel(faction) {
     spike.position.set(6 - i * 5, 19, 0);
     g.add(spike);
   }
-  const neck = box(8, 8, 8, primary);
+  // small overlapping scale plates flanking the spine ridge — the body was
+  // otherwise a single smooth-colored box with no texture at all
+  for (let i = 0; i < 6; i++) {
+    const x = 9 - i * 3.2;
+    for (const z of [3.5, -3.5]) {
+      const plate = new THREE.Mesh(new THREE.OctahedronGeometry(1.3, 0), scaleMat);
+      plate.scale.set(1, 0.5, 0.8);
+      plate.position.set(x, 17.5, z);
+      g.add(plate);
+    }
+  }
+  const neck = box(8, 8, 8, primary, hideMat);
   neck.position.set(16, 17, 0);
   g.add(neck);
-  const head = box(9, 7, 7, primary);
+  const head = box(9, 7, 7, primary, hideMat);
   head.position.set(25, 20, 0);
   g.add(head);
   const jaw = box(4, 2, 5, dark);
@@ -304,9 +389,16 @@ function createDragonModel(faction) {
     wings.push(wing);
   }
   g.userData.wings = wings; // flapped by Renderer3D while airborne/moving
-  const tail = box(4, 4, 20, primary);
+  const tail = box(4, 4, 20, primary, hideMat);
   tail.position.set(-20, 10, 0);
   g.add(tail);
+  // tapering scale plates running down the tail
+  for (let i = 0; i < 5; i++) {
+    const plate = new THREE.Mesh(new THREE.OctahedronGeometry(1 - i * 0.1, 0), scaleMat);
+    plate.scale.set(1, 0.5, 0.8);
+    plate.position.set(-12 - i * 3.5, 12.5, 0);
+    g.add(plate);
+  }
   for (const [lx, lz] of [[6, 5], [6, -5], [-6, 5], [-6, -5]]) {
     const leg = box(4, 10, 4, dark);
     leg.position.set(lx, 5, lz);
