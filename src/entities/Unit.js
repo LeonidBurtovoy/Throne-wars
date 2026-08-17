@@ -327,6 +327,15 @@ export class Unit {
   _handleBuilding(dt, game) {
     const b = this.buildTarget;
     if (!b || b.dead) { this.state = 'idle'; this.buildTarget = null; return; }
+    if (b.complete) {
+      // same orderBuild/moving-to-build/building plumbing as fresh
+      // construction, just repairing hp instead of raising buildProgress —
+      // reused so a worker sent to an already-finished but damaged building
+      // (see Game.handleRightClick) needs no separate state machine
+      if (b.hp >= b.maxHp) { this.state = 'idle'; this.buildTarget = null; return; }
+      b.repairTick(dt, game);
+      return;
+    }
     b.addBuildProgress(dt);
     if (b.complete) { this.state = 'idle'; this.buildTarget = null; }
   }

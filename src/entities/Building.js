@@ -47,6 +47,27 @@ export class Building {
     if (this.buildProgress >= 1) { this.complete = true; this.hp = this.maxHp; }
   }
 
+  // a worker sent to a complete-but-damaged building (see
+  // Unit._handleBuilding and Game.handleRightClick) restores hp over time
+  // at the same pace as original construction, spending a fraction of the
+  // building's original build cost proportional to the hp actually restored
+  // (a full repair costs half the original cost) — if the owner can't
+  // afford this tick's share, repair just stalls instead of going into debt
+  repairTick(dt, game) {
+    if (!this.complete || this.hp >= this.maxHp) return false;
+    const rate = this.maxHp / this.stats.buildTime;
+    const healAmount = Math.min(rate * dt, this.maxHp - this.hp);
+    const frac = healAmount / this.maxHp;
+    const goldCost = this.stats.cost.gold * 0.5 * frac;
+    const woodCost = this.stats.cost.wood * 0.5 * frac;
+    const player = game.players[this.owner];
+    if (player.gold < goldCost || player.wood < woodCost) return false;
+    player.gold -= goldCost;
+    player.wood -= woodCost;
+    this.hp = Math.min(this.maxHp, this.hp + healAmount);
+    return true;
+  }
+
   takeDamage(amount) {
     const dmg = Math.max(1, amount - (this.armor + getArmorBonus(this)));
     this.hp -= dmg;

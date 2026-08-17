@@ -451,10 +451,11 @@ export class Game {
       this.addMessage('Отряд атакует врага');
       return;
     }
-    if (target && target.kind === 'building' && target.owner === owner && !target.complete) {
+    if (target && target.kind === 'building' && target.owner === owner && (!target.complete || target.hp < target.maxHp)) {
       const workerIds = own.filter((u) => u.role === 'worker').map((u) => u.id);
       if (workerIds.length === 0) return;
       this._issue('assist-build', { unitIds: workerIds, buildingId: target.id }, () => this.applyAssistBuildCommand(owner, workerIds, target.id));
+      if (target.complete) this.addMessage('Рабочие ремонтируют здание');
       return;
     }
     const tileType = this.map.getTile(tx, ty);
