@@ -102,13 +102,13 @@ export class Renderer3D {
       halfH * FRUSTUM_MARGIN, -halfH * FRUSTUM_MARGIN,
       1, 4000
     );
-    // 55deg read as nearly top-down in an actual screenshot (confirmed via
-    // headless Chrome, see .devtools/) - buildings showed almost no facade,
-    // just roofs, which hid all the detail work (windows, merlons, mail
-    // bands). A shallower angle, closer to what classic RTS cameras use,
-    // shows much more of each model's side while still keeping the whole
-    // battlefield readable from above.
-    this._elevRad = THREE.MathUtils.degToRad(32);
+    // 55deg read as nearly top-down (no facade/detail visible at all).
+    // 32deg showed plenty of detail but let short units reveal almost as
+    // much side-facade as tall buildings proportionally, so units read as
+    // oversized next to buildings they should be dwarfed by. 44deg is the
+    // middle ground: enough tilt to still show real facade/detail, steep
+    // enough that unit-vs-building scale reads correctly again.
+    this._elevRad = THREE.MathUtils.degToRad(44);
     this._camDist = 1200;
 
     // sky/ground bounce light instead of flat ambient — reads as real
