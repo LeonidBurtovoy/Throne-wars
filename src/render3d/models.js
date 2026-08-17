@@ -502,86 +502,252 @@ function postRoof(wallSize, postH, roofColor) {
   return g;
 }
 
-// Winterfell: not one symmetric spire but a sprawling cluster of stone
-// towers at irregular heights/positions around a long main hall — the
-// single biggest visual cue that separates it from every other building.
+// a ring of short straight wall segments approximating a circular curtain
+// wall (each segment carrying its own crenellated merlons on top, added as
+// its children so they inherit its rotation automatically) — shared by both
+// castles, which otherwise differ in tower shape/material/silhouette
+function wallRing(radius, wallH, segments, color, trimColor) {
+  const g = new THREE.Group();
+  for (let i = 0; i < segments; i++) {
+    const a0 = (i / segments) * Math.PI * 2;
+    const a1 = ((i + 1) / segments) * Math.PI * 2;
+    const x0 = Math.cos(a0) * radius, z0 = Math.sin(a0) * radius;
+    const x1 = Math.cos(a1) * radius, z1 = Math.sin(a1) * radius;
+    const segLen = Math.hypot(x1 - x0, z1 - z0);
+    const seg = box(2.4, wallH, segLen * 1.04, color);
+    seg.position.set((x0 + x1) / 2, wallH / 2, (z0 + z1) / 2);
+    seg.rotation.y = Math.atan2(x1 - x0, z1 - z0);
+    g.add(seg);
+    const merlonCount = Math.max(2, Math.round(segLen / 6));
+    for (let m = 0; m < merlonCount; m++) {
+      const off = (m / (merlonCount - 1) - 0.5) * segLen * 0.85;
+      const merlon = box(2, 2.4, 2, trimColor);
+      merlon.position.set(off, wallH / 2 + 1.2, 0);
+      seg.add(merlon);
+    }
+  }
+  return g;
+}
+
+// a round drum tower with a hollow, crenellated top (a dark disc inset near
+// the top, ringed by merlons all the way around) instead of a plain
+// cylinder+cone — the distinctive open-topped roundels of Winterfell's
+// towers, plus the front-facing icicle row already used elsewhere
+function drumTower(x, z, r, h, color, trimColor) {
+  const g = new THREE.Group();
+  const shaft = cyl(r, r * 1.12, h, color, 12);
+  shaft.position.set(x, h / 2, z);
+  g.add(shaft);
+  const dark = new THREE.Mesh(new THREE.CircleGeometry(r * 0.92, 12), new THREE.MeshBasicMaterial({ color: '#0c0e12' }));
+  dark.rotation.x = -Math.PI / 2;
+  dark.position.set(x, h - 0.2, z);
+  g.add(dark);
+  const merlonCount = Math.max(6, Math.round(r / 1.5));
+  for (let i = 0; i < merlonCount; i++) {
+    const a = (i / merlonCount) * Math.PI * 2;
+    const merlon = box(1.8, 2.6, 1.8, trimColor);
+    merlon.position.set(x + Math.cos(a) * r * 0.96, h + 1.3, z + Math.sin(a) * r * 0.96);
+    g.add(merlon);
+  }
+  icicleRow(g, x, h - 1, z, r * 2.2);
+  return g;
+}
+
+// a small walled grove off to one side — dark pines around a single
+// blood-red weirwood — Winterfell's other unmistakable visual cue besides
+// the round towers, and previously missing entirely
+function godswood(offsetX, offsetZ, radius) {
+  const g = new THREE.Group();
+  const wall = wallRing(radius, 6, 10, '#5a5f68', '#e7edf3');
+  wall.position.set(offsetX, 0, offsetZ);
+  g.add(wall);
+  for (const [px, pz] of [[-4, 3], [3, -4], [-3, -3], [4, 4], [0, -6]]) {
+    const trunk = cyl(0.6, 0.7, 3, WOOD, 6);
+    trunk.position.set(offsetX + px, 1.5, offsetZ + pz);
+    g.add(trunk);
+    const canopy = cone(3, 7, '#1d3d22', 8);
+    canopy.position.set(offsetX + px, 6, offsetZ + pz);
+    g.add(canopy);
+  }
+  const weirTrunk = cyl(1.4, 1.8, 8, '#d8d0bc', 8);
+  weirTrunk.position.set(offsetX, 4, offsetZ);
+  g.add(weirTrunk);
+  const weirCanopy = ball(6, '#8a1f28', { roughness: 0.8 });
+  weirCanopy.scale.set(1.3, 0.85, 1.3);
+  weirCanopy.position.set(offsetX, 11, offsetZ);
+  g.add(weirCanopy);
+  return g;
+}
+
+// Winterfell: a round curtain wall enclosing a cluster of open-topped drum
+// towers at irregular heights around a long main hall, plus a walled
+// godswood off to one side — matches the real castle's defining shapes
+// instead of just a hall with a couple of freestanding towers.
 function createTownhallWinterfell(faction, footprintPx) {
   const g = new THREE.Group();
   const stone = '#6b7280';
   const trim = '#e7edf3';
-  const hall = box(footprintPx * 0.78, 18, footprintPx * 0.5, stone);
-  hall.position.y = 9;
+  g.add(wallRing(footprintPx * 0.62, 10, 16, stone, trim));
+
+  const hall = box(footprintPx * 0.6, 16, footprintPx * 0.4, stone);
+  hall.position.set(footprintPx * 0.08, 8, footprintPx * 0.06);
   g.add(hall);
-  const hallRoof = roofline(footprintPx * 0.78, 18, true, trim);
-  hallRoof.position.z = 0;
+  const hallRoof = roofline(footprintPx * 0.6, 16, true, trim);
+  hallRoof.position.set(footprintPx * 0.08, 0, footprintPx * 0.06);
   g.add(hallRoof);
+
   const towers = [
-    { x: -footprintPx * 0.32, z: -footprintPx * 0.24, r: footprintPx * 0.13, h: 36 }, // the Great Keep — tallest
-    { x: footprintPx * 0.3, z: -footprintPx * 0.2, r: footprintPx * 0.1, h: 24 },
-    { x: footprintPx * 0.26, z: footprintPx * 0.26, r: footprintPx * 0.085, h: 16 }, // squat, uneven — a broken tower
-    { x: -footprintPx * 0.24, z: footprintPx * 0.28, r: footprintPx * 0.11, h: 28 },
+    { x: -footprintPx * 0.22, z: -footprintPx * 0.28, r: footprintPx * 0.12, h: 40 }, // the Great Keep — tallest
+    { x: footprintPx * 0.22, z: -footprintPx * 0.3, r: footprintPx * 0.095, h: 30 },
+    { x: footprintPx * 0.32, z: footprintPx * 0.12, r: footprintPx * 0.08, h: 20 },
+    { x: -footprintPx * 0.05, z: footprintPx * 0.32, r: footprintPx * 0.1, h: 26 },
+    { x: -footprintPx * 0.34, z: footprintPx * 0.06, r: footprintPx * 0.075, h: 16 }, // squat, uneven — a broken tower
   ];
   let tallest = towers[0];
   for (const t of towers) {
     if (t.h > tallest.h) tallest = t;
-    const shaft = cyl(t.r, t.r * 1.15, t.h, stone, 8);
-    shaft.position.set(t.x, t.h / 2, t.z);
-    g.add(shaft);
-    const cren = roofline(t.r * 2.5, t.h, true, trim);
-    cren.position.set(t.x, 0, t.z);
-    g.add(cren);
-    icicleRow(g, t.x, t.h - 1, t.z, t.r * 2.2);
+    g.add(drumTower(t.x, t.z, t.r, t.h, stone, trim));
   }
-  const banner = box(1.6, footprintPx * 0.28, 1.6, faction.colorPrimary);
-  banner.position.set(tallest.x, tallest.h + footprintPx * 0.14, tallest.z);
+  // small courtyard roofs peeking over the curtain wall, so the inside
+  // doesn't read as empty
+  for (const [cx, cz, cw] of [[footprintPx * 0.02, -footprintPx * 0.02, 0.16], [footprintPx * 0.2, footprintPx * 0.22, 0.12]]) {
+    const roof = cone(footprintPx * cw, footprintPx * cw * 0.9, trim, 4);
+    roof.rotation.y = Math.PI / 4;
+    roof.position.set(cx, 9, cz);
+    g.add(roof);
+  }
+
+  const banner = box(1.6, footprintPx * 0.24, 1.6, faction.colorPrimary);
+  banner.position.set(tallest.x, tallest.h + footprintPx * 0.12, tallest.z);
   g.add(banner);
-  g.userData.wallH = 18;
+  g.add(godswood(-footprintPx * 0.85, -footprintPx * 0.05, footprintPx * 0.28));
+
+  g.userData.wallH = 16;
   g.userData.roofTopY = tallest.h;
   return g;
 }
 
-// Dragonstone: built out of a black volcanic outcrop, one dramatic spired
-// tower, dragon-wing carvings along the battlements, embers at the base
-// where the rock still glows — deliberately NOT a symmetric fort either.
+// a flared, wing-like roof cap radiating outward from a tower's peak —
+// Dragonstone's single most recognizable silhouette, approximated with
+// angled flat panels instead of a plain cone since there's no way to
+// sculpt the real pagoda-like shape out of primitives
+function flaredCap(r, y, color, count = 4) {
+  const g = new THREE.Group();
+  for (let i = 0; i < count; i++) {
+    const a = (i / count) * Math.PI * 2 + Math.PI / 4;
+    const panel = box(r * 1.1, 1, r * 0.9, color, { roughness: 0.8 });
+    panel.position.set(Math.cos(a) * r * 0.45, y, Math.sin(a) * r * 0.45);
+    panel.rotation.y = a;
+    panel.rotation.x = -0.5;
+    g.add(panel);
+  }
+  return g;
+}
+
+// a rectangular buttress tower with a simple pyramidal cap — the angular
+// counterpart to Winterfell's round drumTower, giving Dragonstone's wall a
+// straight-walled silhouette instead of round towers in a different color
+function slabTower(x, z, w, d, h, color, capColor) {
+  const g = new THREE.Group();
+  const shaft = box(w, h, d, color);
+  shaft.position.set(x, h / 2, z);
+  g.add(shaft);
+  const cap = cone(Math.max(w, d) * 0.62, h * 0.22, capColor, 4);
+  cap.rotation.y = Math.PI / 4;
+  cap.position.set(x, h + h * 0.11, z);
+  g.add(cap);
+  return g;
+}
+
+// a smaller rocky headland with its own watch-tower, connected visually to
+// the main keep — mirrors the little satellite island/tower off to the
+// side of the real Dragonstone, the counterpart to Winterfell's godswood
+function dragonstoneOutcrop(offsetX, offsetZ, r) {
+  const g = new THREE.Group();
+  const mound = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 0), new THREE.MeshStandardMaterial({ color: '#241f22', flatShading: true, roughness: 1 }));
+  mound.scale.set(1.1, 0.35, 1);
+  mound.position.set(offsetX, r * 0.14, offsetZ);
+  mound.castShadow = true; mound.receiveShadow = true;
+  g.add(mound);
+  const moss = new THREE.Mesh(new THREE.CircleGeometry(r * 0.55, 8), new THREE.MeshStandardMaterial({ color: '#3a4a2c', roughness: 1 }));
+  moss.rotation.x = -Math.PI / 2;
+  moss.position.set(offsetX, r * 0.22, offsetZ);
+  g.add(moss);
+  const towerH = 15;
+  const tower = cyl(r * 0.2, r * 0.26, towerH, '#3a3236', 8);
+  tower.position.set(offsetX, r * 0.2 + towerH / 2, offsetZ);
+  g.add(tower);
+  const cren = roofline(r * 0.55, r * 0.2 + towerH, false, '#0c0606');
+  cren.position.set(offsetX, 0, offsetZ);
+  g.add(cren);
+  return g;
+}
+
+// Dragonstone: an angular, straight-walled cliffside keep (rectangular
+// buttress towers, not round drum towers) topped by a tall tower with a
+// flared wing-like cap, moss-flecked black volcanic rock, embers where the
+// stone still glows, and a smaller satellite outcrop with its own tower —
+// matches the real castle's jagged, angular silhouette instead of the old
+// single round tower ringed with carved "wing" panels.
 function createTownhallDragonstone(faction, footprintPx) {
   const g = new THREE.Group();
   const dark = '#241417';
+  const stone = '#3a3236';
   const rock = new THREE.Mesh(
-    new THREE.IcosahedronGeometry(footprintPx * 0.56, 0),
-    new THREE.MeshStandardMaterial({ color: '#1a1214', flatShading: true })
+    new THREE.IcosahedronGeometry(footprintPx * 0.6, 1),
+    new THREE.MeshStandardMaterial({ color: '#1a1214', flatShading: true, roughness: 1 })
   );
-  rock.scale.set(1.15, 0.42, 1.1);
-  rock.position.y = footprintPx * 0.12;
+  rock.scale.set(1.2, 0.4, 1.15);
+  rock.position.y = footprintPx * 0.1;
   rock.castShadow = true; rock.receiveShadow = true;
   g.add(rock);
-  const baseY = footprintPx * 0.22;
-  const towerH = 42;
-  const tower = cyl(footprintPx * 0.16, footprintPx * 0.22, towerH, dark, 10);
-  tower.position.y = baseY + towerH / 2;
-  g.add(tower);
-  g.add(roofline(footprintPx * 0.46, baseY + towerH, false, '#0c0606'));
-  // carved dragon-wing battlements around the tower base
-  for (let i = 0; i < 5; i++) {
-    const a = (i / 5) * Math.PI * 2;
-    const wing = new THREE.Mesh(
-      new THREE.BoxGeometry(footprintPx * 0.18, 1, footprintPx * 0.06),
-      new THREE.MeshStandardMaterial({ color: dark, side: THREE.DoubleSide })
-    );
-    wing.position.set(Math.cos(a) * footprintPx * 0.22, baseY + 14, Math.sin(a) * footprintPx * 0.22);
-    wing.rotation.y = a;
-    wing.rotation.z = 0.45;
-    g.add(wing);
+  for (const [mx, mz, mr] of [[footprintPx * 0.32, footprintPx * 0.18, 4], [-footprintPx * 0.36, -footprintPx * 0.1, 3.4], [footprintPx * 0.1, -footprintPx * 0.3, 3]]) {
+    const moss = new THREE.Mesh(new THREE.CircleGeometry(mr, 8), new THREE.MeshStandardMaterial({ color: '#3a4a2c', roughness: 1 }));
+    moss.rotation.x = -Math.PI / 2;
+    moss.position.set(mx, footprintPx * 0.12, mz);
+    g.add(moss);
   }
+
+  const baseY = footprintPx * 0.2;
+  g.add(wallRing(footprintPx * 0.5, 12, 12, stone, dark));
+  const buttressSpots = [
+    [footprintPx * 0.44, footprintPx * 0.1], [-footprintPx * 0.4, footprintPx * 0.24],
+    [footprintPx * 0.1, -footprintPx * 0.46], [-footprintPx * 0.2, -footprintPx * 0.4],
+  ];
+  for (const [bx, bz] of buttressSpots) {
+    g.add(slabTower(bx, bz, footprintPx * 0.13, footprintPx * 0.13, 20, stone, dark));
+  }
+
+  const towerH = 46;
+  const tower = box(footprintPx * 0.26, towerH, footprintPx * 0.24, stone);
+  tower.position.set(0, baseY + towerH / 2, 0);
+  g.add(tower);
+  g.add(flaredCap(footprintPx * 0.22, baseY + towerH + 4, dark));
+  g.add(roofline(footprintPx * 0.3, baseY + towerH, false, dark));
+
+  for (const [hx, hz, hw] of [[footprintPx * 0.06, footprintPx * 0.16, footprintPx * 0.2], [-footprintPx * 0.12, footprintPx * 0.08, footprintPx * 0.16]]) {
+    const hh = hw * 0.7;
+    const hall = box(hw, hh, hw * 0.7, stone);
+    hall.position.set(hx, baseY + hh / 2, hz);
+    g.add(hall);
+    const hallRoof = gableRoof(hw, hw * 0.7, baseY + hh, hw * 0.32, dark);
+    hallRoof.position.set(hx, 0, hz);
+    g.add(hallRoof);
+  }
+
   for (const [ex, ez] of [[footprintPx * 0.3, footprintPx * 0.2], [-footprintPx * 0.25, -footprintPx * 0.15]]) {
     const glow = ember(1.8);
-    glow.position.set(ex, footprintPx * 0.1, ez);
+    glow.position.set(ex, footprintPx * 0.1 + 2, ez);
     g.add(glow);
   }
-  const banner = box(1.6, footprintPx * 0.28, 1.6, faction.colorPrimary);
-  banner.position.y = baseY + towerH + footprintPx * 0.14;
+
+  const banner = box(1.6, footprintPx * 0.24, 1.6, faction.colorPrimary);
+  banner.position.set(0, baseY + towerH + 8, 0);
   g.add(banner);
+  g.add(dragonstoneOutcrop(-footprintPx * 0.9, -footprintPx * 0.15, footprintPx * 0.22));
+
   g.userData.wallH = baseY;
-  g.userData.roofTopY = baseY + towerH;
+  g.userData.roofTopY = baseY + towerH + 10;
   return g;
 }
 
