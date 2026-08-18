@@ -3,19 +3,40 @@
 // between two browsers, found via a short human-typeable room code instead
 // of PeerJS's long default peer IDs. PeerJS's free public broker is only
 // used to help the two browsers find each other; once connected, game data
-// flows peer-to-peer, not through any server of ours.
+// flows peer-to-peer when possible, or relays through TURN below when a
+// direct path can't be established (see ICE_CONFIG).
 //
-// Do NOT pass a custom `config`/`iceServers` option to `new Peer(...)` — it
-// REPLACES PeerJS's default ICE config entirely rather than adding to it.
-// A previous round of this file did exactly that (added a public TURN
-// relay, believing PeerJS's default was STUN-only) and made connectivity
-// *worse*: instrumenting the real RTCPeerConnection objects the two sides
-// created (see .devtools/ice-test.js) showed PeerJS's own default already
-// includes a working TURN relay (turn:eu-0.turn.peerjs.com / us-0, valid
-// built-in credentials) alongside Google's STUN server - while the
-// substituted public relay (openrelay via metered.ca) returned DNS lookup
-// failures and TURN-allocate 400 errors in that same test, i.e. was
-// actively broken. Findings/method fully written up in CLAUDE.md.
+// History, in case this needs touching again - two earlier rounds both got
+// this wrong in opposite directions, full detail in CLAUDE.md:
+//   1. Passed a custom `config` pointing at a public demo TURN relay,
+//      thinking PeerJS's default was STUN-only. `config` REPLACES PeerJS's
+//      default rather than merging with it, and that public demo relay
+//      turned out to be dead (shared "openrelayproject" credentials no
+//      longer accepted - confirmed via ice-test.js: DNS resolved fine, but
+//      the TURN server rejected the ALLOCATE request with 400).
+//   2. Removed the custom config entirely, trusting PeerJS's own default -
+//      but PeerJS's cloud broker doesn't actually provide a working TURN
+//      relay either (this is a known, documented limitation of their free
+//      public server, not specific to this project - see the peers/peerjs
+//      GitHub issues). STUN-only is exactly the failure mode that was
+//      being debugged in the first place: it only works when neither
+//      player is behind a NAT/firewall that blocks direct traversal,
+//      which is common, not an edge case.
+// Fixed for real this time with the user's own free Metered.ca TURN
+// account (20GB/month free tier, real credentials rather than a shared
+// public demo) - verified reachable and authenticating via ice-test.js
+// before shipping.
+const ICE_CONFIG = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun.relay.metered.ca:80' },
+    { urls: 'turn:global.relay.metered.ca:80', username: 'e71f1a3504bea05e9a295cd1', credential: 'D6HWx0d7nlG/MRqD' },
+    { urls: 'turn:global.relay.metered.ca:80?transport=tcp', username: 'e71f1a3504bea05e9a295cd1', credential: 'D6HWx0d7nlG/MRqD' },
+    { urls: 'turn:global.relay.metered.ca:443', username: 'e71f1a3504bea05e9a295cd1', credential: 'D6HWx0d7nlG/MRqD' },
+    { urls: 'turns:global.relay.metered.ca:443?transport=tcp', username: 'e71f1a3504bea05e9a295cd1', credential: 'D6HWx0d7nlG/MRqD' },
+  ],
+};
+
 const ROOM_PREFIX = 'throne-wars-';
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no ambiguous 0/O/1/I
 // without this, a connection that never opens (see the ICE_CONFIG comment
@@ -34,7 +55,7 @@ export function hostRoom({ onStatus } = {}) {
     let settled = false;
     function attempt(triesLeft) {
       const code = randomCode();
-      const peer = new Peer(ROOM_PREFIX + code, { debug: 0 });
+      const peer = new Peer(ROOM_PREFIX + code, { debug: 0, config: ICE_CONFIG });
       peer.on('open', () => {
         onStatus?.(`Комната создана: ${code}. Ждём соперника…`);
         const timer = setTimeout(() => {
@@ -66,7 +87,7 @@ export function hostRoom({ onStatus } = {}) {
 export function joinRoom(code, { onStatus } = {}) {
   return new Promise((resolve, reject) => {
     let settled = false;
-    const peer = new Peer(undefined, { debug: 0 });
+    const peer = new Peer(undefined, { debug: 0, config: ICE_CONFIG });
     peer.on('open', () => {
       onStatus?.('Подключаемся…');
       const conn = peer.connect(ROOM_PREFIX + code.trim().toUpperCase(), { reliable: true });

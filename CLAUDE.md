@@ -54,47 +54,56 @@ connection state transitions). Previously the only guidance here was "can't
 test this, need two real devices"; that's no longer true, and ice-test.js in
 particular answers *why* a connection isn't opening, not just *whether*.
 
-Round 1 (2026-08-17) added a custom `config: { iceServers: [...] }` to
-`new Peer(...)` (a public TURN relay, openrelay via metered.ca), believing
-PeerJS's default was STUN-only. **This was wrong and made things worse.**
-Round 2 (2026-08-18, after the user reported it still wasn't working)
-used ice-test.js to actually inspect the RTCPeerConnection config PeerJS
-was constructing, and found: passing `config` to `new Peer(...)` *replaces*
-PeerJS's default entirely rather than merging with it. PeerJS's real
-default already includes a working TURN relay (`turn:eu-0.turn.peerjs.com`
-/ `turn:us-0.turn.peerjs.com`, valid built-in credentials) alongside Google
-STUN - confirmed by literally diffing the RTCPeerConnection config with and
-without the override. The substituted metered.ca relay, meanwhile, was
-actively broken from this test environment: DNS lookup failures
-(`icecandidateerror` code 701) and `400` TURN-allocate errors on the rare
-lookup that did resolve. **Fix: removed the custom `config` entirely** -
-`PeerLink.js` now trusts PeerJS's own default, which is demonstrably better
-configured than the hand-rolled replacement was. Lesson: verify an
-assumption about a third-party library's defaults (e.g. by inspecting what
-it actually constructs, like ice-test.js does) before "fixing" it -
-guessing led directly to a regression here.
+**Resolved 2026-08-18 (round 3) - real end-to-end connection confirmed
+working.** Two earlier rounds both got this wrong in opposite directions:
+  1. Passed a custom `config` pointing at a public demo TURN relay
+     (openrelay via metered.ca, shared credentials from an old tutorial),
+     believing PeerJS's default was STUN-only. `config` REPLACES PeerJS's
+     default rather than merging with it, and the shared demo credentials
+     turned out to be dead (`ice-test.js` showed the TURN server rejecting
+     ALLOCATE with 400 - the project appears to have moved to requiring a
+     real signup, per its own current docs).
+  2. Removed the custom config entirely, trusting PeerJS's default -
+     wrong in the other direction. PeerJS's free cloud broker doesn't
+     actually provide a working TURN relay (a known, documented
+     limitation - see the peers/peerjs GitHub issues); STUN-only is
+     exactly the failure mode being debugged, since it only ever works
+     when neither side is behind a NAT/firewall blocking direct
+     traversal, which is common. The user then reported a live failure
+     with a real friend that matched this exactly (host timed out
+     waiting despite the guest actually attempting to join).
+  Round 3: the user signed up for Metered.ca's free tier (20GB/month,
+  real account rather than a shared public demo) and provided real TURN
+  credentials. Wired into a proper merged `iceServers` list (Google STUN
+  + Metered STUN + Metered TURN on ports 80/443, UDP/TCP/TLS) passed as
+  `config`. Verified with `ice-test.js`: real `type=relay` candidates
+  were allocated (proof the credentials authenticated), and
+  `iceConnectionState`/`connectionState` both reached `connected` on
+  *both* sides - the first real end-to-end WebRTC success anywhere in
+  this debugging process, in this same sandboxed environment that could
+  never complete a connection via STUN alone or via the earlier dead
+  demo TURN credentials. `net-test.js` then confirmed the full game flow
+  works too: both host and guest actually reach `#game-screen`.
 
-The 25s connection timeout (added round 1, kept) is still worth having
-regardless of ICE config: without it, a connection that doesn't open hangs
-"Ждём соперника…"/"Подключаемся…" forever with zero feedback either way.
+  The credentials live in `PeerLink.js` in plain sight (`ICE_CONFIG`).
+  This is normal/expected for TURN - the browser must have them client-
+  side to authenticate, same as e.g. a Firebase client config or Stripe
+  publishable key. The practical implication is the 20GB/month free
+  quota is shared across anyone who finds and uses these credentials
+  (they're visible in the public repo and the deployed site's source),
+  not private to the account holder - worth knowing if usage patterns
+  ever look off, but not a security bug to "fix."
 
-Residual caveat, unchanged by the round-2 fix: this specific sandboxed test
-environment cannot complete a real end-to-end WebRTC connection no matter
-which ICE servers are configured - `ice-test.js` shows both peers
-successfully getting real `srflx` (STUN-reflexive, i.e. actual public IP)
-candidates from Google's STUN server, so basic UDP STUN traffic does get
-out and back, but `iceConnectionState` never advances past `checking` in
-the observation window, and separately, DNS lookups for *both*
-`turn.peerjs.com` and `metered.ca` fail from inside this environment even
-though the same hostnames resolve fine when queried directly against
-8.8.8.8 from a plain shell command. That combination (STUN works, TURN
-hostnames won't resolve, peer connectivity checks stall) points at this
-sandbox's own DNS/UDP setup, not at the application code - but it does mean
-true end-to-end multiplayer connectivity has never actually been verified
-working from here, on either round of this fix. If a future report says it
-*still* doesn't connect: re-run `ice-test.js` first. A real
-`icecandidateerror`/state-transition trail (not a silent hang) narrows the
-next step down a lot faster than reading PeerLink.js again from scratch.
+Lesson for next time this needs touching: verify an assumption about a
+third-party library's defaults or a public service's credentials (e.g. by
+inspecting what's actually constructed/returned, like ice-test.js does)
+before "fixing" something here - two rounds of guessing produced a
+regression and a still-broken state respectively; only actually
+instrumenting the real RTCPeerConnection objects (not just watching
+whether `#game-screen` appears) found the real problem each time. The 25s
+connection timeout (added round 1, kept throughout) is still worth having
+regardless of ICE config - without it, a connection that doesn't open
+hangs "Ждём соперника…"/"Подключаемся…" forever with zero feedback.
 
 ## Real modeled assets (Kenney Castle Kit) — started 2026-08-17
 
