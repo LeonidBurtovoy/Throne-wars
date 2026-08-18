@@ -430,6 +430,17 @@ export class Renderer3D {
         }
         weapon.rotation.x = swing;
       }
+      const legs = entry.model.userData.legs;
+      if (legs) {
+        // an alternating left/right hip swing while moving — real gait
+        // instead of just the whole body bobbing up and down in place;
+        // resting at 0 (a neutral standing pose) otherwise, including
+        // while gathering/building/attacking so the stride doesn't fight
+        // the weapon-swing/interact animations happening at the same time
+        const stride = moving ? Math.sin(u.bobTimer * 7.2) * 0.55 : 0;
+        legs[0].rotation.x = stride;
+        legs[1].rotation.x = -stride;
+      }
       const wings = entry.model.userData.wings;
       if (wings) {
         // both wings flap together in sync (like a real bird/dragon), not

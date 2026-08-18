@@ -80,9 +80,20 @@ const MAIL_FINISH = { roughness: 0.55, metalness: 0.55 };
 function humanoid({ legColor, bodyW, bodyH, bodyD, bodyColor, bodyMatOpts, headColor, headR }) {
   const group = new THREE.Group();
   const legH = bodyH * 0.35;
-  const legs = box(bodyW * 0.7, legH, bodyD * 0.6, legColor);
-  legs.position.y = legH / 2;
-  group.add(legs);
+  // two separate legs, each pivoted at the hip (not at its own box center)
+  // so Renderer3D can swing them into a real alternating walk stride
+  // instead of the whole body just bobbing up and down in place
+  const legW = bodyW * 0.28, legD = bodyD * 0.6, legGap = bodyW * 0.19;
+  const legPivots = [];
+  for (const side of [-1, 1]) {
+    const pivot = new THREE.Group();
+    pivot.position.set(side * legGap, legH, 0);
+    const leg = box(legW, legH, legD, legColor);
+    leg.position.y = -legH / 2;
+    pivot.add(leg);
+    group.add(pivot);
+    legPivots.push(pivot);
+  }
   const torsoH = bodyH * 0.65;
   const torso = box(bodyW, torsoH, bodyD, bodyColor, bodyMatOpts);
   torso.position.y = legH + torsoH / 2;
@@ -92,6 +103,7 @@ function humanoid({ legColor, bodyW, bodyH, bodyD, bodyColor, bodyMatOpts, headC
   group.add(head);
   group.userData.torsoTopY = legH + torsoH;
   group.userData.torsoH = torsoH;
+  group.userData.legs = legPivots; // [leftHipPivot, rightHipPivot]
   return group;
 }
 
@@ -264,7 +276,6 @@ function createCavalryModel(faction) {
   pennant.position.set(9, 25, -6);
   g.add(pennant);
   g.userData.weapon = lance;
-  g.userData.legs = rider; // the rider bobs with the horse's gallop
   return g;
 }
 
