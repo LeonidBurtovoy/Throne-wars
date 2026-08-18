@@ -49,6 +49,7 @@ export class Game {
     this.isNetworkHost = isNetworkHost;
     this.remoteOwner = remoteOwner;
     this.network = null; // attached externally by NetworkHost/NetworkGuest
+    this._guestCameraCentered = false; // see applySnapshot
     if (this.isNetworkHost) this._guestFog = new FogOfWar(map.width, map.height);
 
     const n = Math.max(1, Math.min(3, numOpponents || 1));
@@ -729,6 +730,21 @@ export class Game {
     this.selection = [...this.units, ...this.buildings].filter((e) => selectedIds.has(e.id));
 
     if (data.fog) this.fog.state.set(data.fog);
+
+    // _setup() has no building data to center on yet for a remote guest (it
+    // starts empty, fully populated by this method) and falls back to the
+    // map's geometric center - which is usually a totally unexplored patch
+    // far from the guest's actual starting corner, reading as a permanently
+    // black screen. Re-center on the guest's own townhall the first time it
+    // actually shows up, and never again after that (so free camera panning
+    // isn't fought on every later snapshot).
+    if (this.isRemoteGuest && !this._guestCameraCentered) {
+      const myTownhall = this.buildings.find((b) => b.owner === this.localOwner && b.type === 'townhall');
+      if (myTownhall) {
+        this.camera.centerOn(myTownhall.centerX, myTownhall.centerY);
+        this._guestCameraCentered = true;
+      }
+    }
 
     HUD.updateResourceBar(this.players[this.localOwner]);
     HUD.updateSelectionPanel(this);
