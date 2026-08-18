@@ -58,10 +58,10 @@ export class Game {
     // alternate opponent houses for visual variety when there's more than one
     const factionForOwner = (i) => (i % 2 === 1 ? opponentOf(playerFaction) : playerFaction);
 
-    this.players = [{ id: 0, faction: playerFaction, gold: START_GOLD, wood: START_WOOD, steel: START_STEEL, foodCap: START_FOOD_CAP, foodUsed: 0, upgrades: createDefaultUpgrades() }];
+    this.players = [{ id: 0, faction: playerFaction, gold: START_GOLD, wood: START_WOOD, steel: START_STEEL, bows: 0, chainmail: 0, horses: 0, foodCap: START_FOOD_CAP, foodUsed: 0, upgrades: createDefaultUpgrades() }];
     for (const o of this.allOwners) {
       if (o === 0) continue;
-      this.players[o] = { id: o, faction: factionForOwner(o), gold: START_GOLD, wood: START_WOOD, steel: START_STEEL, foodCap: START_FOOD_CAP, foodUsed: 0, upgrades: createDefaultUpgrades() };
+      this.players[o] = { id: o, faction: factionForOwner(o), gold: START_GOLD, wood: START_WOOD, steel: START_STEEL, bows: 0, chainmail: 0, horses: 0, foodCap: START_FOOD_CAP, foodUsed: 0, upgrades: createDefaultUpgrades() };
     }
 
     this.aiControllers = this.aiOwners.map((o) => new AIController(o));
@@ -167,6 +167,27 @@ export class Game {
     return best;
   }
 
+  _findNearestBuildingOfType(owner, type, nearX, nearY) {
+    let best = null, bestDist = Infinity;
+    for (const b of this.buildings) {
+      if (b.dead || b.owner !== owner || b.type !== type || !b.complete) continue;
+      const d = Math.hypot(b.centerX - nearX, b.centerY - nearY);
+      if (d < bestDist) { bestDist = d; best = b; }
+    }
+    return best;
+  }
+
+  // where a haul worker should pick up `toBuilding`'s input resource from —
+  // hay only ever exists locally on a pasture, everything else (wood/steel)
+  // comes from any of the owner's regular dropoffs
+  findHaulSource(owner, toBuilding) {
+    const haulType = BUILDING_STATS[toBuilding.type].haulInput;
+    if (!haulType) return null;
+    return haulType === 'hay'
+      ? this._findNearestBuildingOfType(owner, 'pasture', toBuilding.centerX, toBuilding.centerY)
+      : this.findNearestDropoff({ owner, x: toBuilding.centerX, y: toBuilding.centerY });
+  }
+
   depositResource(owner, type, amount) {
     const player = this.players[owner];
     if (type === 'gold') player.gold += amount;
@@ -222,8 +243,13 @@ export class Game {
     }
     if (!canAfford(player, stats.cost)) { if (building.owner === this.localOwner) this.addMessage('Не хватает ресурсов'); return false; }
     if (!hasFoodRoom(player, stats.food)) { if (building.owner === this.localOwner) this.addMessage('Постройте больше пашен'); return false; }
+    if (stats.equip && (player[stats.equip] || 0) < 1) {
+      if (building.owner === this.localOwner) this.addMessage('Не хватает снаряжения — наладьте его производство и переноску');
+      return false;
+    }
     spendResources(player, stats.cost);
     reserveFood(player, stats.food);
+    if (stats.equip) player[stats.equip] -= 1;
     building.queueUnit(role);
     return true;
   }
@@ -379,6 +405,20 @@ export class Game {
     return this.tradeResources(building, fromType);
   }
 
+  applyHaulCommand(owner, unitIds, buildingId) {
+    const toBuilding = this.buildings.find((b) => !b.dead && b.id === buildingId && b.owner === owner);
+    if (!toBuilding) return false;
+    const haulType = BUILDING_STATS[toBuilding.type].haulInput;
+    if (!haulType) return false;
+    const fromBuilding = this.findHaulSource(owner, toBuilding);
+    if (!fromBuilding) {
+      if (owner === this.localOwner) this.addMessage(haulType === 'hay' ? 'Нет доступного пастбища' : 'Нет склада для переноски');
+      return false;
+    }
+    for (const u of this._resolveUnits(owner, unitIds)) if (u.role === 'worker') u.orderHaul(this.map, fromBuilding, toBuilding, haulType);
+    return true;
+  }
+
   applyStopCommand(owner, unitIds) {
     for (const u of this._resolveUnits(owner, unitIds)) u.stop();
   }
@@ -457,6 +497,13 @@ export class Game {
       if (workerIds.length === 0) return;
       this._issue('assist-build', { unitIds: workerIds, buildingId: target.id }, () => this.applyAssistBuildCommand(owner, workerIds, target.id));
       if (target.complete) this.addMessage('Рабочие ремонтируют здание');
+      return;
+    }
+    if (target && target.kind === 'building' && target.owner === owner && target.complete && target.hp >= target.maxHp && BUILDING_STATS[target.type].haulInput) {
+      const workerIds = own.filter((u) => u.role === 'worker').map((u) => u.id);
+      if (workerIds.length === 0) return;
+      this._issue('haul', { unitIds: workerIds, buildingId: target.id }, () => this.applyHaulCommand(owner, workerIds, target.id));
+      this.addMessage('Рабочие носят ресурсы');
       return;
     }
     const tileType = this.map.getTile(tx, ty);
@@ -675,7 +722,7 @@ export class Game {
       gameTime: this.gameTime,
       gameOver: this.gameOver,
       winnerOwner: this.winnerOwner,
-      players: this.players.map((p) => ({ gold: p.gold, wood: p.wood, steel: p.steel, foodCap: p.foodCap, foodUsed: p.foodUsed, faction: p.faction, upgrades: { ...p.upgrades } })),
+      players: this.players.map((p) => ({ gold: p.gold, wood: p.wood, steel: p.steel, bows: p.bows, chainmail: p.chainmail, horses: p.horses, foodCap: p.foodCap, foodUsed: p.foodUsed, faction: p.faction, upgrades: { ...p.upgrades } })),
       units: this.units.filter((u) => !u.dead).map((u) => ({
         id: u.id, role: u.role, owner: u.owner, faction: u.faction, x: u.x, y: u.y,
         hp: u.hp, maxHp: u.maxHp, state: u.state, carrying: u.carrying,
@@ -686,6 +733,7 @@ export class Game {
         hp: b.hp, maxHp: b.maxHp, buildProgress: b.buildProgress, complete: b.complete,
         trainQueue: b.trainQueue.map((j) => ({ role: j.role, timeLeft: j.timeLeft, totalTime: j.totalTime })),
         researching: b.researching ? { ...b.researching } : null,
+        inputStock: { ...b.inputStock }, localStock: { ...b.localStock },
       })),
       projectiles: this.projectiles.filter((p) => !p.dead).map((p) => ({ id: p.id, x: p.x, y: p.y, owner: p.owner, faction: p.faction })),
       fog: this._guestFog ? Array.from(this._guestFog.state) : null,
@@ -731,6 +779,7 @@ export class Game {
       hp: b.hp, maxHp: b.maxHp, buildProgress: b.buildProgress, complete: b.complete,
       trainQueue: b.trainQueue, researching: b.researching, selected: selectedKeys.has(`building:${b.id}`),
       stats: BUILDING_STATS[b.type], armor: BUILDING_STATS[b.type].armor || 0, upgrades: this.players[b.owner]?.upgrades,
+      inputStock: b.inputStock || {}, localStock: b.localStock || {},
     }));
 
     this.projectiles = data.projectiles.map((p) => ({ id: p.id, x: p.x, y: p.y, owner: p.owner, faction: p.faction }));

@@ -22,6 +22,7 @@ export class NetworkHost {
       case 'attack': g.applyAttackCommand(owner, msg.unitIds, msg.targetId); break;
       case 'gather': g.applyGatherCommand(owner, msg.unitIds, msg.tx, msg.ty, msg.resourceType); break;
       case 'assist-build': g.applyAssistBuildCommand(owner, msg.unitIds, msg.buildingId); break;
+      case 'haul': g.applyHaulCommand(owner, msg.unitIds, msg.buildingId); break;
       case 'build': g.applyBuildCommand(owner, msg.buildingType, msg.tx, msg.ty, msg.builderIds); break;
       case 'train': g.applyTrainCommand(owner, msg.buildingId, msg.role); break;
       case 'research': g.applyResearchCommand(owner, msg.buildingId, msg.key); break;

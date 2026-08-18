@@ -1000,10 +1000,82 @@ function createMarket(faction, factionKey, footprintPx) {
   return g;
 }
 
+// an open-air fletcher's yard — a bow rack (a few bent-torus bows leaning
+// on a frame) plus a raw-wood stack, under the same post-and-roof shed as
+// the workshop but visually distinct props so it doesn't read as a reskin
+function createFletcher(faction, factionKey, footprintPx) {
+  const isStark = factionKey !== 'targaryen';
+  const g = postRoof(footprintPx * 0.86, 14, isStark ? '#6b5a44' : '#6a4a34');
+  for (let i = 0; i < 3; i++) {
+    const bow = new THREE.Mesh(new THREE.TorusGeometry(3.2, 0.3, 6, 10, Math.PI * 1.3), stdMat(WOOD));
+    bow.rotation.z = Math.PI / 2;
+    bow.rotation.y = Math.PI / 2;
+    bow.position.set(-footprintPx * 0.3, 3.2, -footprintPx * 0.28 + i * 3.4);
+    g.add(bow);
+  }
+  const woodStack = box(6, 5, 5, WOOD_LIGHT);
+  woodStack.position.set(footprintPx * 0.3, 2.5, footprintPx * 0.26);
+  g.add(woodStack);
+  g.userData.wallH = 14;
+  g.userData.roofTopY = g.userData.postH + 2;
+  return g;
+}
+
+// a walled smithy for chainmail — same furnace-shed silhouette family as the
+// forge, but the display prop is hanging mail rings instead of a chimney,
+// so it reads as "armor" rather than "weapon smithing"
+function createArmory(faction, factionKey, footprintPx) {
+  const isStark = factionKey !== 'targaryen';
+  const stone = isStark ? '#5a5f68' : '#3a2622';
+  const g = baseWallAndRoof(footprintPx, 13, stone, isStark ? '#3d4a56' : '#221115', 0.16);
+  for (let i = 0; i < 3; i++) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(1.4, 0.3, 6, 10), stdMat(MAIL, MAIL_FINISH));
+    ring.position.set(-footprintPx * 0.28 + i * 3.6, 9, footprintPx * 0.3);
+    g.add(ring);
+  }
+  const anvil = box(6, 4, 3, METAL_DARK, METAL_FINISH);
+  anvil.position.set(footprintPx * 0.26, 2, -footprintPx * 0.26);
+  g.add(anvil);
+  if (!isStark) { const glow = ember(1.4); glow.position.set(footprintPx * 0.26, 4.6, -footprintPx * 0.26); g.add(glow); }
+  return g;
+}
+
+// an open, unwalled paddock — a fenced field with a couple of haystacks,
+// mirroring the farm's "cultivated ground, not a building" treatment
+function createPasture(faction, factionKey, footprintPx) {
+  const g = new THREE.Group();
+  const fieldSize = footprintPx * 1.4;
+  const field = new THREE.Mesh(
+    new THREE.PlaneGeometry(fieldSize, fieldSize),
+    new THREE.MeshStandardMaterial({ color: '#5a6b3a', side: THREE.DoubleSide })
+  );
+  field.rotation.x = -Math.PI / 2;
+  field.position.y = 0.15;
+  field.receiveShadow = true;
+  g.add(field);
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2;
+    const post = cyl(0.5, 0.6, 4, WOOD, 6);
+    post.position.set(Math.cos(a) * fieldSize * 0.42, 2, Math.sin(a) * fieldSize * 0.42);
+    g.add(post);
+  }
+  for (const [hx, hz] of [[-footprintPx * 0.22, footprintPx * 0.15], [footprintPx * 0.2, -footprintPx * 0.18]]) {
+    const hay = new THREE.Mesh(new THREE.SphereGeometry(3.4, 8, 8), stdMat('#d8b23a', { roughness: 1 }));
+    hay.scale.set(1, 0.7, 1);
+    hay.position.set(hx, 2.2, hz);
+    hay.castShadow = true;
+    g.add(hay);
+  }
+  g.userData.wallH = 2;
+  g.userData.roofTopY = 5;
+  return g;
+}
+
 const BUILDING_FACTORY = {
   townhall: createTownhall, farm: createFarm, barracks: createBarracks, archery: createArchery,
   stable: createStable, tower: createTower, forge: createForge, workshop: createWorkshop,
-  temple: createTemple, market: createMarket,
+  temple: createTemple, market: createMarket, fletcher: createFletcher, armory: createArmory,
+  pasture: createPasture,
 };
 
 export function createBuildingModel(type, faction, factionKey, footprintPx) {
@@ -1167,6 +1239,11 @@ export function createCarryProp(type) {
     const chunk = new THREE.Mesh(new THREE.OctahedronGeometry(1.8, 0), stdMat('#9fc0d4', { roughness: 0.3, metalness: 0.6 }));
     chunk.castShadow = true;
     return chunk;
+  }
+  if (type === 'hay') {
+    const bale = box(3, 2.2, 2.2, '#d8b23a', { roughness: 1 });
+    bale.castShadow = true;
+    return bale;
   }
   // gold — a bulging sack
   const sack = new THREE.Mesh(new THREE.SphereGeometry(1.9, 8, 8), stdMat('#8a6a3a', { roughness: 0.95 }));

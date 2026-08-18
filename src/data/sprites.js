@@ -1176,6 +1176,73 @@ export function drawBuilding(ctx, type, faction, factionKey, x, y, sizePx, progr
       ctx.strokeRect(sizePx * 0.6, sizePx - h * 0.13 - h * 0.13, h * 0.16, h * 0.13);
       break;
     }
+
+    case 'fletcher': {
+      const wallF = isStark ? '#6b5a44' : '#6a4a34';
+      outlinedRect(ctx, 0, top, sizePx, h, wallF);
+      stoneTexture(ctx, 0, top, sizePx, h, x * 3 + y * 2);
+      ctx.beginPath();
+      ctx.moveTo(0, top); ctx.lineTo(sizePx / 2, top - sizePx * 0.18); ctx.lineTo(sizePx, top);
+      ctx.closePath();
+      ctx.fillStyle = roofGradient(ctx, top - sizePx * 0.18, top, secondary);
+      ctx.fill();
+      // bow rack out front — a few curved bow silhouettes leaning on the wall
+      ctx.strokeStyle = FIXED.wood; ctx.lineWidth = 1.1;
+      for (let i = 0; i < 3; i++) {
+        const bx = sizePx * (0.18 + i * 0.16);
+        ctx.beginPath();
+        ctx.arc(bx, sizePx * 0.76, sizePx * 0.14, 0.4, Math.PI - 0.4);
+        ctx.stroke();
+      }
+      // raw wood stock waiting to be worked
+      ctx.fillStyle = FIXED.wood;
+      ctx.fillRect(sizePx * 0.66, sizePx - h * 0.26, h * 0.26, h * 0.2);
+      ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 0.5;
+      ctx.strokeRect(sizePx * 0.66, sizePx - h * 0.26, h * 0.26, h * 0.2);
+      ctx.fillStyle = primary;
+      ctx.fillRect(0, top, sizePx, h * 0.1);
+      if (!isStark) flame(ctx, sizePx * 0.5, top - sizePx * 0.18, sizePx * 0.02, time, x + y);
+      break;
+    }
+
+    case 'armory': {
+      const stoneA = isStark ? '#5a5f68' : '#3a2622';
+      outlinedRect(ctx, 0, top, sizePx, h, stoneA);
+      stoneTexture(ctx, 0, top, sizePx, h, x * 4 + y * 2);
+      // hanging mail rings on the wall — stands in for chainmail on display
+      ctx.strokeStyle = FIXED.metal; ctx.lineWidth = 0.8;
+      for (let i = 0; i < 3; i++) {
+        for (let j = 0; j < 2; j++) {
+          ctx.beginPath();
+          ctx.arc(sizePx * (0.18 + i * 0.14), top + h * (0.28 + j * 0.22), sizePx * 0.045, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+      ctx.fillStyle = FIXED.metalDark;
+      ctx.fillRect(sizePx * 0.6, sizePx - h * 0.22, sizePx * 0.22, h * 0.14); // anvil block
+      ctx.fillRect(sizePx * 0.56, sizePx - h * 0.26, sizePx * 0.3, h * 0.06);
+      ctx.fillStyle = primary;
+      ctx.fillRect(0, top, sizePx, h * 0.1);
+      if (!isStark) flame(ctx, sizePx * 0.22, top + h * 0.6, sizePx * 0.025, time, x);
+      break;
+    }
+
+    case 'pasture': {
+      // open fenced field, no real walls — mirrors the farm's open-field
+      // treatment rather than another walled hall
+      ctx.fillStyle = isStark ? '#5a6b3a' : '#5a5230';
+      ctx.fillRect(0, sizePx * 0.5, sizePx, sizePx * 0.5);
+      ctx.strokeStyle = FIXED.wood; ctx.lineWidth = 1;
+      for (let i = 0; i < 4; i++) {
+        ctx.beginPath(); ctx.moveTo(i * sizePx / 3.2, sizePx); ctx.lineTo(i * sizePx / 3.2, sizePx - 7); ctx.stroke();
+      }
+      ctx.beginPath(); ctx.moveTo(0, sizePx - 5); ctx.lineTo(sizePx, sizePx - 5); ctx.stroke(); // fence rail
+      ctx.fillStyle = '#d8b23a';
+      for (const [hx, hy] of [[sizePx * 0.28, sizePx * 0.68], [sizePx * 0.62, sizePx * 0.78]]) {
+        ctx.beginPath(); ctx.ellipse(hx, hy, sizePx * 0.13, sizePx * 0.09, 0, 0, Math.PI * 2); ctx.fill();
+      }
+      break;
+    }
   }
 
   if (progress < 1) {

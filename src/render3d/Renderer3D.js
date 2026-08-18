@@ -30,8 +30,8 @@ const TERRAIN_COLOR = {
   5: '#33363e', // steel (ore-outcrop prop sits on top)
 };
 const RESOURCE_TILE_TYPES = new Set([1, 4, 5]); // forest, gold, steel
-const MOVING_STATES = new Set(['moving', 'attack-move', 'moving-to-gather', 'moving-to-build', 'returning-to-drop']);
-const WORKING_STATES = new Set(['gathering', 'building']);
+const MOVING_STATES = new Set(['moving', 'attack-move', 'moving-to-gather', 'moving-to-build', 'returning-to-drop', 'moving-to-haul-pickup', 'hauling-deliver']);
+const WORKING_STATES = new Set(['gathering', 'building', 'hauling-pickup']);
 
 // deterministic per-tile pseudo-random value in [0,1) — used for terrain
 // color mottling and to seed ground-scatter props, so the same tile always

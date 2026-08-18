@@ -12,6 +12,13 @@ const PRODUCTION_SCALING = [
   { type: 'archery', workersNeeded: 10 },
   { type: 'stable', workersNeeded: 12 },
 ];
+// trainer building -> the equipment-source building it depends on, so the
+// AI raises the source once it has a reason to (see step 3c below)
+const SUPPORT_PAIRS = [
+  ['archery', 'fletcher'],
+  ['barracks', 'armory'],
+  ['stable', 'pasture'],
+];
 
 export class AIController {
   constructor(owner) {
@@ -65,6 +72,11 @@ export class AIController {
       game.trainUnit(base, 'worker');
     }
 
+    // 1c. keep exactly one dedicated hauler per equipment-producing building
+    // so fletcher/armory/stable never permanently starve of input and the
+    // equip-gate above doesn't stall the AI's whole military production
+    if (workers.length >= 6) this._maintainHaulers(game, buildings, workers);
+
     // 1b. rare Valyrian steel is needed for every upgrade — once the
     // economy can spare a pair of hands, keep exactly one worker mining it
     // instead of leaving research permanently stalled on a missing resource
@@ -76,6 +88,19 @@ export class AIController {
           const candidate = workers.find((w) => w.gatherType === 'gold' && w.state === 'gathering');
           if (candidate) candidate.orderGather(game.map, steelTile[0], steelTile[1], 'steel');
         }
+      }
+    }
+
+    // 1d. a fletcher taxes wood continuously (unlike the one-time building
+    // costs the default 3:1 gold bias was tuned around) — once it exists,
+    // keep a few more workers on wood so it doesn't starve every other
+    // wood-costed building (farms, a stable) indefinitely
+    if (buildings.some((b) => b.type === 'fletcher' && b.complete)) {
+      const woodWorkers = workers.filter((w) => w.gatherType === 'wood').length;
+      if (woodWorkers < 4) {
+        const candidate = workers.find((w) => w.gatherType === 'gold' && w.state === 'gathering');
+        const woodTile = candidate && game.findNearbyResourceTile(base.tx, base.ty, 'wood');
+        if (woodTile) candidate.orderGather(game.map, woodTile[0], woodTile[1], 'wood');
       }
     }
 
@@ -113,6 +138,15 @@ export class AIController {
       this._tryBuild(game, 'market');
     }
 
+    // 3c. equipment-source buildings — once the trainer building that needs
+    // the equipment exists, raise its supply building too, otherwise the
+    // equip-gate (see Game.trainUnit) would permanently block that role
+    for (const [trainerType, supportType] of SUPPORT_PAIRS) {
+      const hasTrainer = buildings.some((b) => b.type === trainerType && b.complete);
+      const hasSupport = buildings.some((b) => b.type === supportType);
+      if (hasTrainer && !hasSupport) { this._tryBuild(game, supportType); break; }
+    }
+
     // 4. train military — within a building that offers more than one role
     // (the stable trains both cavalry and siege), fill in whichever role
     // we currently have the least of instead of always the first option.
@@ -131,6 +165,7 @@ export class AIController {
       const affordable = trains.filter((r) => {
         const s = UNIT_STATS[r];
         if (s.maxCount && game.countOwned(b.owner, r) >= s.maxCount) return false;
+        if (s.equip && (player[s.equip] || 0) < 1) return false;
         return canAfford(player, s.cost) && hasFoodRoom(player, s.food);
       });
       const pool = affordable.length > 0 ? affordable : trains;
@@ -191,6 +226,21 @@ export class AIController {
           this.waveThreshold += 3;
         }
       }
+    }
+  }
+
+  // one steady hauler per production building — picks an idle or currently-
+  // gathering worker (gathering is the least disruptive job to interrupt;
+  // there are usually several) rather than pulling one off a build site
+  _maintainHaulers(game, buildings, workers) {
+    const haulTargets = buildings.filter((b) => b.complete && BUILDING_STATS[b.type].haulInput);
+    for (const b of haulTargets) {
+      const HAUL_STATES = new Set(['moving-to-haul-pickup', 'hauling-pickup', 'hauling-deliver']);
+      const already = workers.some((w) => w.haulToBuilding === b && HAUL_STATES.has(w.state));
+      if (already) continue;
+      const candidate = workers.find((w) => w.state === 'gathering' || w.state === 'idle');
+      if (!candidate) continue;
+      game.applyHaulCommand(this.owner, [candidate.id], b.id);
     }
   }
 

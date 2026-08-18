@@ -44,6 +44,8 @@ function costLabel(cost) {
   return parts.join(' ');
 }
 
+const EQUIP_NAMES = { bows: 'луки', chainmail: 'кольчуги', horses: 'кони' };
+
 function statSpan(label, base, bonus) {
   if (!bonus) return `<span>${label} ${base}</span>`;
   return `<span>${label} ${base + bonus}<span class="bonus"> (+${bonus})</span></span>`;
@@ -66,6 +68,12 @@ function statsHTML(entity) {
   const armBonus = getArmorBonus(entity);
   const parts = [hpLine, statSpan('🛡', entity.armor, armBonus)];
   if (entity.stats.attack) parts.push(`<span>⚔ ${entity.stats.attack}</span><span>➤ ${entity.stats.attackRange}</span>`);
+  if (entity.stats.haulInput && entity.inputStock) {
+    parts.push(`<span>📥 ${Math.floor(entity.inputStock[entity.stats.haulInput] || 0)}/${entity.stats.inputCap}</span>`);
+  }
+  if (entity.stats.producesLocal && entity.localStock) {
+    parts.push(`<span>🌾 ${Math.floor(entity.localStock[entity.stats.producesLocal] || 0)}/${entity.stats.localCap}</span>`);
+  }
   return parts.join('');
 }
 
@@ -146,9 +154,12 @@ export function updateSelectionPanel(game) {
         const stats = UNIT_STATS[role];
         const queued = first.trainQueue.length;
         const capped = stats.maxCount && game.countOwned(player.id, role) >= stats.maxCount;
+        const missingEquip = stats.equip && (player[stats.equip] || 0) < 1;
         const name = faction.unitNames[role] + (queued > 0 ? ` (${queued})` : capped ? ' (макс.)' : '');
-        const disabled = capped || !canAfford(player, stats.cost) || !hasFoodRoom(player, stats.food) || queued >= 5;
-        const tooltip = capped ? `${stats.description} Уже есть — больше одного не завести за игру.` : stats.description;
+        const disabled = capped || missingEquip || !canAfford(player, stats.cost) || !hasFoodRoom(player, stats.food) || queued >= 5;
+        const tooltip = capped ? `${stats.description} Уже есть — больше одного не завести за игру.`
+          : missingEquip ? `${stats.description} Не хватает снаряжения: ${EQUIP_NAMES[stats.equip]}.`
+          : stats.description;
         addButton(name, stats.cost, disabled, () => {
           game.trainUnit(first, role);
           updateSelectionPanel(game);
@@ -179,7 +190,7 @@ export function updateSelectionPanel(game) {
       }, null, `Обменять ${TRADE_BATCH} золота на ${gain} дерева.`);
     }
   } else if (allOwnWorkers) {
-    for (const type of ['farm', 'barracks', 'archery', 'stable', 'tower', 'forge', 'workshop', 'temple', 'market']) {
+    for (const type of ['farm', 'barracks', 'archery', 'stable', 'fletcher', 'armory', 'pasture', 'tower', 'forge', 'workshop', 'temple', 'market']) {
       const stats = BUILDING_STATS[type];
       const name = faction.buildingNames[type];
       const disabled = !canAfford(player, stats.cost);

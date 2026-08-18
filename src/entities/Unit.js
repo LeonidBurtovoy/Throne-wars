@@ -1,4 +1,4 @@
-import { UNIT_STATS } from '../data/factions.js';
+import { UNIT_STATS, BUILDING_STATS } from '../data/factions.js';
 import { TILE, GATHER } from '../config.js';
 import { findPath } from '../map/Pathfinding.js';
 import { getArmorBonus, getGatherTimeMultiplier, getCarryCapacityBonus, getHealRangeBonus } from '../data/upgrades.js';
@@ -42,6 +42,15 @@ export class Unit {
     this.gatherTimer = 0;
     this.dropoffBuilding = null;
 
+    // hauling — physically carrying an intermediate good between two
+    // specific buildings (e.g. warehouse -> fletcher, pasture -> stable),
+    // a separate loop from gather/dropoff above even though it looks
+    // similar, kept independent so it can't destabilize the well-tested
+    // gather cycle
+    this.haulFromBuilding = null;
+    this.haulToBuilding = null;
+    this.haulType = null; // 'wood' | 'steel' | 'hay'
+
     // construction
     this.buildTarget = null;
 
@@ -70,6 +79,7 @@ export class Unit {
     this.attackTarget = null;
     if (!opts.keepGather) { this.gatherType = null; this.gatherTileX = null; }
     if (!opts.keepBuild) this.buildTarget = null;
+    this._clearHaul();
   }
 
   stop() {
@@ -77,12 +87,14 @@ export class Unit {
     this.state = 'idle';
     this.attackTarget = null;
     this.moveGoal = null;
+    this._clearHaul();
   }
 
   orderAttack(target) {
     this.attackTarget = target;
     this.path = [];
     this.state = 'attacking';
+    this._clearHaul();
   }
 
   orderGather(map, tx, ty, type) {
@@ -90,6 +102,7 @@ export class Unit {
     this.gatherTileX = tx;
     this.gatherTileY = ty;
     this.carrying = null;
+    this._clearHaul();
     const blocking = type === 'gold' || type === 'steel';
     let destX = tx, destY = ty;
     if (blocking) {
@@ -103,10 +116,46 @@ export class Unit {
 
   orderBuild(map, building) {
     this.buildTarget = building;
+    this._clearHaul();
     const targetTile = map.findAdjacentWalkable(building.tx, building.ty, this.tileX, this.tileY) || [building.tx, building.ty];
     const path = findPath(map, this.tileX, this.tileY, targetTile[0], targetTile[1]);
     this.path = (path || []).map(([px, py]) => ({ x: px * TILE + TILE / 2, y: py * TILE + TILE / 2 }));
     this.state = 'moving-to-build';
+  }
+
+  // physically carry `type` (wood/steel/hay) from one building to another,
+  // looping forever until reassigned — mirrors orderGather/dropoff but
+  // between two fixed buildings instead of a resource tile and any dropoff
+  orderHaul(map, fromBuilding, toBuilding, type) {
+    this.haulFromBuilding = fromBuilding;
+    this.haulToBuilding = toBuilding;
+    this.haulType = type;
+    this.carrying = null;
+    this.gatherType = null;
+    this.buildTarget = null;
+    this._headToHaulSource(map);
+  }
+
+  _clearHaul() {
+    this.haulFromBuilding = null;
+    this.haulToBuilding = null;
+    this.haulType = null;
+  }
+
+  _headToHaulSource(map) {
+    const from = this.haulFromBuilding;
+    const target = map.findAdjacentWalkable(from.tx + Math.floor(from.size / 2), from.ty + Math.floor(from.size / 2), this.tileX, this.tileY) || [from.tx, from.ty];
+    const path = findPath(map, this.tileX, this.tileY, target[0], target[1]);
+    this.path = (path || []).map(([px, py]) => ({ x: px * TILE + TILE / 2, y: py * TILE + TILE / 2 }));
+    this.state = 'moving-to-haul-pickup';
+  }
+
+  _headToHaulDest(map) {
+    const to = this.haulToBuilding;
+    const target = map.findAdjacentWalkable(to.tx + Math.floor(to.size / 2), to.ty + Math.floor(to.size / 2), this.tileX, this.tileY) || [to.tx, to.ty];
+    const path = findPath(map, this.tileX, this.tileY, target[0], target[1]);
+    this.path = (path || []).map(([px, py]) => ({ x: px * TILE + TILE / 2, y: py * TILE + TILE / 2 }));
+    this.state = 'hauling-deliver';
   }
 
   distanceTo(other) {
@@ -172,6 +221,22 @@ export class Unit {
       case 'returning-to-drop':
         this._handleReturning(dt, game);
         break;
+
+      case 'moving-to-haul-pickup': {
+        const arrived = this._followPath(dt);
+        if (arrived) this.state = 'hauling-pickup';
+        break;
+      }
+
+      case 'hauling-pickup':
+        this._handleHaulPickup(dt, game);
+        break;
+
+      case 'hauling-deliver': {
+        const arrived = this._followPath(dt);
+        if (arrived) this._handleHaulDeliver(game);
+        break;
+      }
 
       case 'moving-to-build': {
         const arrived = this._followPath(dt);
@@ -322,6 +387,40 @@ export class Unit {
     } else {
       this.state = 'idle';
     }
+  }
+
+  // waits at the source building, picks up a load once one's available and
+  // the destination isn't already backed up, then heads out — a poll
+  // instead of a one-shot check so a temporarily empty warehouse/pasture
+  // doesn't strand the hauler in 'idle' forever
+  _handleHaulPickup(dt, game) {
+    const from = this.haulFromBuilding, to = this.haulToBuilding;
+    if (!from || from.dead || !to || to.dead) { this.state = 'idle'; this._clearHaul(); return; }
+    const destStats = BUILDING_STATS[to.type];
+    if ((to.inputStock[this.haulType] || 0) >= destStats.inputCap) return; // destination full, wait
+    const cap = (this.stats.carryCapacity || GATHER.carryCapacity) + getCarryCapacityBonus(this);
+    let available;
+    if (this.haulType === 'hay') {
+      available = from.localStock.hay || 0;
+    } else {
+      available = game.players[this.owner][this.haulType] || 0;
+    }
+    const amount = Math.min(cap, available, destStats.inputCap - (to.inputStock[this.haulType] || 0));
+    if (amount <= 0) return; // source empty, wait
+    if (this.haulType === 'hay') from.localStock.hay -= amount;
+    else game.players[this.owner][this.haulType] -= amount;
+    this.carrying = { type: this.haulType, amount };
+    this._headToHaulDest(game.map);
+  }
+
+  _handleHaulDeliver(game) {
+    const to = this.haulToBuilding;
+    if (to && !to.dead && this.carrying) {
+      to.inputStock[this.carrying.type] = (to.inputStock[this.carrying.type] || 0) + this.carrying.amount;
+    }
+    this.carrying = null;
+    if (!this.haulFromBuilding || this.haulFromBuilding.dead || !to || to.dead) { this.state = 'idle'; this._clearHaul(); return; }
+    this._headToHaulSource(game.map);
   }
 
   _handleBuilding(dt, game) {

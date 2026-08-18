@@ -27,6 +27,9 @@ export const FACTIONS = {
       workshop: 'Мастерская снабжения',
       temple: 'Септа Семерых',
       market: 'Торговый двор',
+      fletcher: 'Лучная мастерская',
+      armory: 'Кузня кольчуг',
+      pasture: 'Пастбище',
     },
   },
   targaryen: {
@@ -54,6 +57,9 @@ export const FACTIONS = {
       workshop: 'Палата снабжения',
       temple: 'Чертог Р\'глора',
       market: 'Торговая гавань',
+      fletcher: 'Мастерская стрелков',
+      armory: 'Палата доспехов',
+      pasture: 'Кормовые угодья',
     },
   },
 };
@@ -71,21 +77,21 @@ export const UNIT_STATS = {
   melee: {
     role: 'melee', hp: 60, speed: 55, sight: 4, buildTime: 20,
     cost: { gold: 60, wood: 20 }, food: 1,
-    attack: 9, attackRange: 0.7, attackCooldown: 1.0, armor: 2,
-    description: 'Дешёвая пехота ближнего боя. Хорош числом на ранних стадиях игры.',
+    attack: 9, attackRange: 0.7, attackCooldown: 1.0, armor: 2, equip: 'chainmail',
+    description: 'Дешёвая пехота ближнего боя. Хорош числом на ранних стадиях игры. Нужна кольчуга из кузни кольчуг.',
   },
   ranged: {
     role: 'ranged', hp: 35, speed: 55, sight: 5, buildTime: 22,
     cost: { gold: 50, wood: 40 }, food: 1,
     attack: 6, attackRange: 4.2, attackCooldown: 1.3, armor: 0,
-    projectileSpeed: 260,
-    description: 'Стреляет издалека, но хрупок в ближнем бою — держите позади пехоты.',
+    projectileSpeed: 260, equip: 'bows',
+    description: 'Стреляет издалека, но хрупок в ближнем бою — держите позади пехоты. Нужен лук из лучной мастерской.',
   },
   cavalry: {
     role: 'cavalry', hp: 90, speed: 100, sight: 5, buildTime: 26,
     cost: { gold: 80, wood: 40 }, food: 2,
-    attack: 14, attackRange: 0.8, attackCooldown: 1.0, armor: 3,
-    description: 'Быстрый и сильный всадник. Отлично добивает лучников и рабочих на флангах.',
+    attack: 14, attackRange: 0.8, attackCooldown: 1.0, armor: 3, equip: 'horses',
+    description: 'Быстрый и сильный всадник. Отлично добивает лучников и рабочих на флангах. Нужен конь из конюшни.',
   },
   siege: {
     role: 'siege', hp: 50, speed: 35, sight: 5, buildTime: 34,
@@ -97,8 +103,8 @@ export const UNIT_STATS = {
   champion: {
     role: 'champion', hp: 130, speed: 45, sight: 4, buildTime: 30,
     cost: { gold: 140, wood: 60 }, food: 2,
-    attack: 16, attackRange: 0.75, attackCooldown: 1.1, armor: 4,
-    description: 'Тяжёлый элитный латник: больше здоровья и брони, чем у обычной пехоты, но дороже и медленнее.',
+    attack: 16, attackRange: 0.75, attackCooldown: 1.1, armor: 4, equip: 'chainmail',
+    description: 'Тяжёлый элитный латник: больше здоровья и брони, чем у обычной пехоты, но дороже и медленнее. Нужна кольчуга из кузни кольчуг.',
   },
   healer: {
     role: 'healer', hp: 40, speed: 55, sight: 5, buildTime: 24,
@@ -142,7 +148,8 @@ export const BUILDING_STATS = {
   stable: {
     hp: 450, size: 2, buildTime: 45, cost: { gold: 150, wood: 100 },
     trains: ['cavalry', 'siege', 'legend'], sight: 4, armor: 2,
-    description: 'Готовит конницу, осадные машины и легендарного зверя дома.',
+    haulInput: 'hay', produces: 'horses', inputPerUnit: 6, productionTime: 3, inputCap: 18,
+    description: 'Готовит конницу, осадные машины и легендарного зверя дома. Коней растят из сена, которое рабочие носят с пастбища.',
   },
   tower: {
     hp: 300, size: 1, buildTime: 30, cost: { gold: 80, wood: 40 },
@@ -169,6 +176,24 @@ export const BUILDING_STATS = {
     hp: 300, size: 2, buildTime: 30, cost: { gold: 100, wood: 80 },
     sight: 3, armor: 1,
     description: 'Позволяет обменивать золото на дерево и наоборот, когда одного ресурса не хватает.',
+  },
+  fletcher: {
+    hp: 300, size: 2, buildTime: 32, cost: { gold: 90, wood: 60 },
+    sight: 3, armor: 1,
+    haulInput: 'wood', produces: 'bows', inputPerUnit: 12, productionTime: 8, inputCap: 24,
+    description: 'Делает луки из дерева, которое рабочие носят сюда со склада. Луки нужны лучникам.',
+  },
+  armory: {
+    hp: 350, size: 2, buildTime: 36, cost: { gold: 110, wood: 70 },
+    sight: 3, armor: 2,
+    haulInput: 'steel', produces: 'chainmail', inputPerUnit: 10, productionTime: 4.5, inputCap: 20,
+    description: 'Куёт кольчуги из редкой стали, которую рабочие носят сюда со склада. Кольчуги нужны пехоте.',
+  },
+  pasture: {
+    hp: 200, size: 2, buildTime: 28, cost: { gold: 70, wood: 40 },
+    sight: 3, armor: 0,
+    producesLocal: 'hay', localCap: 20, localGrowTime: 2.5,
+    description: 'Выращивает сено. Рабочие носят его в конюшню, чтобы кормить коней.',
   },
 };
 
