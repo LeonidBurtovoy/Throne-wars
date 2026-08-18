@@ -2,8 +2,20 @@ export class InputHandler {
   constructor(canvas, game) {
     this.canvas = canvas;
     this.game = game;
-    this.mouseX = 0;
-    this.mouseY = 0;
+    // starts at the canvas center, not (0,0) - (0,0) is coincidentally
+    // always "at the edge" for _panCamera's edge-scroll check below, so
+    // before the very first real mousemove event fires, the camera would
+    // silently scroll toward the top-left corner every frame on its own.
+    // Normally a few pixels of unwanted drift by the time a real player's
+    // mouse reaches the game area - but for a network guest specifically,
+    // whose camera only gets centered once real data arrives (well after
+    // the game loop has already been running on stale (0,0) for a while,
+    // unlike the local/host path which centers before the loop starts),
+    // this could drag a freshly-centered camera away before the player
+    // ever gets to click anything, making a just-fixed camera-centering
+    // bug look like an unrelated "clicking things does nothing" bug.
+    this.mouseX = canvas.width / 2;
+    this.mouseY = canvas.height / 2;
     this.mouseDown = false;
     this.dragStart = null;
     this.dragging = false;

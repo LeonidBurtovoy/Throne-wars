@@ -704,14 +704,22 @@ export class Game {
     this.winnerOwner = data.winnerOwner;
     data.players.forEach((p, i) => { if (this.players[i]) Object.assign(this.players[i], p); });
 
-    const selectedIds = new Set(this.selection.map((e) => e.id));
+    // Unit and Building each keep their own independent id counter (see
+    // nextId in entities/Unit.js and entities/Building.js), so a unit and
+    // a building can end up sharing the same numeric id - a bare id Set
+    // here would then re-select an unrelated unit any time a building
+    // with the same id was selected (or vice versa) on the very next
+    // snapshot, silently turning a single-building selection into an
+    // ambiguous multi-select with no train/build buttons. Keyed by
+    // "kind:id" instead so the two id spaces can never collide.
+    const selectedKeys = new Set(this.selection.map((e) => `${e.kind}:${e.id}`));
 
     this.units = data.units.map((u) => ({
       id: u.id, kind: 'unit', role: u.role, owner: u.owner, faction: u.faction,
       x: u.x, y: u.y, tileX: Math.floor(u.x / TILE), tileY: Math.floor(u.y / TILE),
       centerX: u.x, centerY: u.y, radius: u.role === 'legend' ? TILE * 0.48 : TILE * 0.27,
       hp: u.hp, maxHp: u.maxHp, state: u.state, carrying: u.carrying,
-      bobTimer: u.bobTimer, attackCooldown: u.attackCooldown, selected: selectedIds.has(u.id),
+      bobTimer: u.bobTimer, attackCooldown: u.attackCooldown, selected: selectedKeys.has(`unit:${u.id}`),
       stats: UNIT_STATS[u.role], armor: UNIT_STATS[u.role].armor, upgrades: this.players[u.owner]?.upgrades,
     }));
 
@@ -721,13 +729,13 @@ export class Game {
       get centerX() { return this.x + (this.size * TILE) / 2; },
       get centerY() { return this.y + (this.size * TILE) / 2; },
       hp: b.hp, maxHp: b.maxHp, buildProgress: b.buildProgress, complete: b.complete,
-      trainQueue: b.trainQueue, researching: b.researching, selected: selectedIds.has(b.id),
+      trainQueue: b.trainQueue, researching: b.researching, selected: selectedKeys.has(`building:${b.id}`),
       stats: BUILDING_STATS[b.type], armor: BUILDING_STATS[b.type].armor || 0, upgrades: this.players[b.owner]?.upgrades,
     }));
 
     this.projectiles = data.projectiles.map((p) => ({ id: p.id, x: p.x, y: p.y, owner: p.owner, faction: p.faction }));
 
-    this.selection = [...this.units, ...this.buildings].filter((e) => selectedIds.has(e.id));
+    this.selection = [...this.units, ...this.buildings].filter((e) => selectedKeys.has(`${e.kind}:${e.id}`));
 
     if (data.fog) this.fog.state.set(data.fog);
 
