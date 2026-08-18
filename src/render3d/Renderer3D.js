@@ -17,6 +17,10 @@
 // the "did the click land on the right tile" math.
 
 import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { createUnitModel, createBuildingModel, createTreeModel, createGoldNodeModel, createSteelNodeModel, createCarryProp, createGrassTuft, createRockDetail, box } from './models.js';
 import { FACTIONS } from '../data/factions.js';
 import { TILE_TYPE } from '../config.js';
@@ -72,19 +76,26 @@ export class Renderer3D {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     // ACES rolls off highlights but also visibly darkens the overall image
     // versus no tone mapping at all — 1.15 read as genuinely dark with the
-    // light levels below; pushed up hard to compensate
-    this.renderer.toneMappingExposure = 1.9;
+    // light levels below; pushed up hard to compensate. Trimmed slightly
+    // from 1.9 when bloom was added below, since bloom itself adds
+    // perceived brightness around bright surfaces.
+    this.renderer.toneMappingExposure = 1.75;
 
     this.scene = new THREE.Scene();
-    // a bright, clear daytime sky instead of a near-black void — the old
-    // near-black background/fog color was a leftover from the flat 2D
-    // canvas' void color and reads as "dark" the instant any sky is
-    // visible in a real 3D scene
-    const SKY = '#8fb2da';
+    // a warm late-afternoon sky instead of the previous neutral midday
+    // blue — closer to the golden-hour reference look requested, and
+    // pairs with the warmer/lower sun below instead of fighting it
+    const SKY = '#9db8d6';
     this.scene.background = new THREE.Color(SKY);
     // atmospheric depth: distant terrain fades toward the sky color instead
-    // of every tile reading at full contrast regardless of distance — pushed
-    // further out so it only affects the far edge of view, not most of it
+    // of every tile reading at full contrast regardless of distance —
+    // pushed further out so it only affects the far edge of view, not most
+    // of it. MUST match the background/SKY color, not an unrelated warm
+    // tone — a mismatched fog color washes every distant surface (water,
+    // unexplored fog-of-war black) toward that color, which read as a
+    // muddy reddish haze during an actual visual check rather than the
+    // intended warm-light atmosphere (achieved instead via the sun/
+    // hemisphere below, which don't have this blending problem).
     this.scene.fog = new THREE.Fog(SKY, 1500, 3600);
 
     // world-units-per-pixel MUST match on both axes (matching the old 2D
@@ -112,13 +123,19 @@ export class Renderer3D {
     this._camDist = 1200;
 
     // sky/ground bounce light instead of flat ambient — reads as real
-    // outdoor daylight rather than a uniform grey fill
-    this.scene.add(new THREE.HemisphereLight('#cfe0f7', '#4a4030', 1.05));
+    // outdoor daylight rather than a uniform grey fill. Dropped from 1.05
+    // so the sun (warmed and pushed up below) reads as the dominant light
+    // source with real contrast between lit and shadowed faces, instead of
+    // the hemisphere fill flattening that difference out.
+    this.scene.add(new THREE.HemisphereLight('#cfe0f7', '#4a4030', 0.75));
     // the sun: repositioned every frame in _updateCamera to follow the
     // camera's look-at target, so its shadow frustum always covers the
     // currently-visible ground instead of only the area near world origin
-    // (which would leave most of a large map permanently unshadowed)
-    const sun = new THREE.DirectionalLight('#fff6e0', 2.6);
+    // (which would leave most of a large map permanently unshadowed).
+    // Warmed from a near-white '#fff6e0' to a golden-hour orange and
+    // pushed brighter, since it's now doing more of the scene's total
+    // lighting work with the hemisphere fill turned down above.
+    const sun = new THREE.DirectionalLight('#ffe3ba', 2.8);
     sun.castShadow = true;
     sun.shadow.camera.left = -900; sun.shadow.camera.right = 900;
     sun.shadow.camera.top = 900; sun.shadow.camera.bottom = -900;
@@ -132,12 +149,24 @@ export class Renderer3D {
     // cool fill light from the opposite side of the sun — keeps shadowed
     // faces readable instead of going flat black, the classic cheap
     // "3-point lighting" trick for a scene lit by an environment instead
-    // of one hard light source
-    const fill = new THREE.DirectionalLight('#7fa0cc', 0.7);
+    // of one hard light source. Kept deliberately cool/dim against the now-
+    // warmer sun so shadowed faces read as "in shade", not just dimmer.
+    const fill = new THREE.DirectionalLight('#7fa0cc', 0.55);
     fill.position.set(1, 1, 1); // relative offset only, repositioned with the sun each frame
     this.scene.add(fill);
     this.scene.add(fill.target);
     this.fill = fill;
+
+    // bloom via a real post-processing pass — a small glow around bright
+    // highlights (embers, metal specular, sunlit edges) is the single
+    // biggest "cinematic" cue the flat direct-render was missing. Kept
+    // subtle (moderate threshold, low strength) so it reads as atmosphere
+    // rather than a glowing haze over the whole scene.
+    this.composer = new EffectComposer(this.renderer);
+    this.composer.addPass(new RenderPass(this.scene, this.camera));
+    this._bloomPass = new UnrealBloomPass(new THREE.Vector2(viewportWidth, viewportHeight), 0.35, 0.4, 0.85);
+    this.composer.addPass(this._bloomPass);
+    this.composer.addPass(new OutputPass());
 
     this._raycaster = new THREE.Raycaster();
     this._groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -167,17 +196,46 @@ export class Renderer3D {
     return [hit.x, hit.z];
   }
 
+  // a tileable ground-grain texture (dirt/stone speckle + faint streaks),
+  // built lazily on first real terrain build — never at module load, so it
+  // stays inert in the headless logic-test bundle same as models.js's copy
+  _groundGrainTexture() {
+    if (this._groundGrain) return this._groundGrain;
+    const size = 128;
+    const canvas = document.createElement('canvas');
+    canvas.width = size; canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, size, size);
+    for (let i = 0; i < 3000; i++) {
+      const x = Math.random() * size, y = Math.random() * size;
+      const v = 165 + Math.random() * 80;
+      ctx.fillStyle = `rgba(${v | 0},${v | 0},${v | 0},${(0.2 + Math.random() * 0.35).toFixed(2)})`;
+      ctx.fillRect(x, y, 1 + Math.random() * 2.2, 1 + Math.random() * 2.2);
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    this._groundGrain = tex;
+    return tex;
+  }
+
   // ---------------- terrain ----------------
   _buildTerrain(map, TILE) {
     const positions = [];
     const colors = [];
+    const uvs = [];
     const indices = [];
+    // world units per texture repeat — smaller than a tile so the grain
+    // reads as fine ground texture, not one giant smear per tile
+    const UV_SCALE = TILE * 1.5;
     let vc = 0;
     for (let ty = 0; ty < map.height; ty++) {
       for (let tx = 0; tx < map.width; tx++) {
         const x0 = tx * TILE, x1 = x0 + TILE;
         const z0 = ty * TILE, z1 = z0 + TILE;
         positions.push(x0, 0, z0, x1, 0, z0, x1, 0, z1, x0, 0, z1);
+        uvs.push(x0 / UV_SCALE, z0 / UV_SCALE, x1 / UV_SCALE, z0 / UV_SCALE, x1 / UV_SCALE, z1 / UV_SCALE, x0 / UV_SCALE, z1 / UV_SCALE);
         for (let i = 0; i < 4; i++) colors.push(0, 0, 0);
         indices.push(vc, vc + 1, vc + 2, vc, vc + 2, vc + 3);
         vc += 4;
@@ -185,13 +243,20 @@ export class Renderer3D {
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
     geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
     geo.setIndex(indices);
     geo.computeVertexNormals();
     // DoubleSide: hand-built geometry, and this environment has no way to
     // visually confirm triangle winding is front-facing-up — safer to pay
-    // a small draw cost than risk an invisible ground plane
-    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.95, metalness: 0 });
+    // a small draw cost than risk an invisible ground plane. The grain
+    // texture multiplies against the existing per-tile vertex color, so
+    // flat colors get real visible surface variation instead of a smooth
+    // painted look, without touching the terrain-type color logic at all.
+    const mat = new THREE.MeshStandardMaterial({
+      vertexColors: true, side: THREE.DoubleSide, roughness: 0.95, metalness: 0,
+      map: this._groundGrainTexture(),
+    });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.receiveShadow = true;
     this.scene.add(mesh);
@@ -209,7 +274,7 @@ export class Renderer3D {
       for (let tx = 0; tx < map.width; tx++) {
         const explored = fog.isExplored(tx, ty);
         if (!explored) {
-          c.set('#020203');
+          c.set('#000000');
         } else {
           const type = map.getTile(tx, ty);
           c.set(TERRAIN_COLOR[type] || TERRAIN_COLOR[0]);
@@ -330,8 +395,10 @@ export class Renderer3D {
         if (type !== TILE_TYPE.GRASS && type !== TILE_TYPE.ROCK) continue; // resource tiles already get a tree/ore prop
         // a tuft on every single grass tile packed them into a dense,
         // fine-grained pattern that read as static/noise rather than
-        // grass at normal gameplay zoom — thin out to roughly half
-        if (type === TILE_TYPE.GRASS && tileNoise(tx, ty) < 0.5) continue;
+        // grass at normal gameplay zoom — thinned out, but less
+        // aggressively than before (now ~70% coverage, was ~50%) now that
+        // the reference-driven pass wants a visibly busier ground overall
+        if (type === TILE_TYPE.GRASS && tileNoise(tx, ty) < 0.3) continue;
         const key = tx + ',' + ty;
         let entry = this._detailMeshes.get(key);
         if (entry && entry.type !== type) {
@@ -663,8 +730,10 @@ export class Renderer3D {
     this.camera.updateProjectionMatrix();
 
     // the sun (and its shadow frustum) follows the same look-at point so
-    // shadows stay correct anywhere on the map, not just near world origin
-    this.sun.position.set(targetX - 400, 600, targetZ - 300);
+    // shadows stay correct anywhere on the map, not just near world origin.
+    // Lowered from y=600 to y=380 for a more raking golden-hour angle —
+    // longer, more visible shadows instead of the flatter near-noon look.
+    this.sun.position.set(targetX - 500, 480, targetZ - 260);
     this.sun.target.position.set(targetX, 0, targetZ);
     this.sun.target.updateMatrixWorld();
 
@@ -700,6 +769,6 @@ export class Renderer3D {
     this._syncResourceAmountLabel(game);
     this._syncPlacementGhost(game);
 
-    this.renderer.render(this.scene, this.camera);
+    this.composer.render();
   }
 }

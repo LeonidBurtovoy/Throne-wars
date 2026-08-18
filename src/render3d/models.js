@@ -13,11 +13,53 @@
 import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
 import * as kit from './kit.js';
 
+// A small tileable speckle/streak pattern shared by every material below —
+// flat procedural colors otherwise read as smooth plastic; multiplying a
+// subtle grain texture over them (kept bright on average so it doesn't
+// darken the existing, already-tuned lighting) is the cheapest way to get a
+// "weathered surface" look with zero external texture assets. Built lazily
+// on first actual use, not at module load — every function in this file
+// only touches THREE/document inside a function body (never at the
+// top-level), which is what lets the headless logic-test bundler treat
+// THREE as an inert external import; a module-load-time canvas/texture call
+// would throw the moment that test bundle runs, since nothing else in this
+// file executes eagerly either.
+let _grainTexture = null;
+function grainTexture() {
+  if (_grainTexture) return _grainTexture;
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, size, size);
+  for (let i = 0; i < 2200; i++) {
+    const x = Math.random() * size, y = Math.random() * size;
+    const v = 190 + Math.random() * 55; // stays bright overall so it modulates rather than darkens
+    ctx.fillStyle = `rgba(${v | 0},${v | 0},${v | 0},${(0.25 + Math.random() * 0.35).toFixed(2)})`;
+    ctx.fillRect(x, y, 1 + Math.random() * 1.6, 1 + Math.random() * 1.6);
+  }
+  ctx.strokeStyle = 'rgba(150,150,150,0.18)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 14; i++) {
+    const x = Math.random() * size;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x + (Math.random() - 0.5) * 20, size);
+    ctx.stroke();
+  }
+  _grainTexture = new THREE.CanvasTexture(canvas);
+  _grainTexture.wrapS = THREE.RepeatWrapping;
+  _grainTexture.wrapT = THREE.RepeatWrapping;
+  _grainTexture.repeat.set(3, 3);
+  return _grainTexture;
+}
+
 // MeshStandardMaterial (PBR-ish roughness/metalness) instead of Lambert —
 // responds to light much more realistically, and lets metal props (swords,
 // anvils, wheels) actually read as metal instead of flat-colored plastic.
 function stdMat(color, { roughness = 0.85, metalness = 0.05 } = {}) {
-  return new THREE.MeshStandardMaterial({ color, roughness, metalness });
+  return new THREE.MeshStandardMaterial({ color, roughness, metalness, map: grainTexture() });
 }
 const METAL_FINISH = { roughness: 0.35, metalness: 0.75 };
 
@@ -581,6 +623,29 @@ function godswood(offsetX, offsetZ, radius) {
   return g;
 }
 
+// scattered crates/barrels + a banner pole — small courtyard clutter so the
+// area around the townhall reads as lived-in rather than an empty swept
+// plaza. Faction-agnostic (plain wood tones) so both castle factories can
+// share it without threading faction colors through.
+function courtyardClutter(offsetX, offsetZ) {
+  const g = new THREE.Group();
+  const crate1 = box(3, 3, 3, WOOD_LIGHT);
+  crate1.position.set(offsetX, 1.5, offsetZ);
+  g.add(crate1);
+  const crate2 = box(2.4, 2.4, 2.4, WOOD_LIGHT);
+  crate2.position.set(offsetX + 3.2, 1.2, offsetZ + 0.6);
+  g.add(crate2);
+  for (const [bx, bz] of [[-2.6, 1.4], [-4.4, 0.4]]) {
+    const barrel = cyl(1.6, 1.8, 3.4, WOOD, 10);
+    barrel.position.set(offsetX + bx, 1.7, offsetZ + bz);
+    g.add(barrel);
+  }
+  const pole = cyl(0.4, 0.4, 8, WOOD, 6);
+  pole.position.set(offsetX + 1, 4, offsetZ - 2.6);
+  g.add(pole);
+  return g;
+}
+
 // Winterfell: composed from real Kenney Castle Kit pieces (see kit.js) —
 // a rectangular curtain wall with a tower stacked at each corner (one
 // noticeably taller "Great Keep"), a cool icy-blue tint over the kit's
@@ -613,6 +678,7 @@ function createTownhallWinterfellKit(faction) {
   g.add(flag);
 
   g.add(godswood(-kit.KIT_UNIT * 4.4, -kit.KIT_UNIT * 0.3, kit.KIT_UNIT * 1.4));
+  g.add(courtyardClutter(kit.KIT_UNIT * 0.3, kit.KIT_UNIT * 2.6));
 
   g.userData.wallH = 1.31 * kit.KIT_UNIT;
   g.userData.roofTopY = tallest.topYUnits * kit.KIT_UNIT;
@@ -691,6 +757,7 @@ function createTownhallDragonstoneKit(faction) {
   g.add(flag);
 
   g.add(dragonstoneOutcrop(-kit.KIT_UNIT * 3.6, -kit.KIT_UNIT * 0.6, kit.KIT_UNIT * 1.1));
+  g.add(courtyardClutter(kit.KIT_UNIT * 0.2, kit.KIT_UNIT * 2.2));
 
   g.userData.wallH = 1.31 * kit.KIT_UNIT;
   g.userData.roofTopY = tallest.topYUnits * kit.KIT_UNIT;
@@ -1090,8 +1157,8 @@ export function createBuildingModel(type, faction, factionKey, footprintPx) {
 // not a single toy tree planted dead-center
 export function createTreeModel(seed = 0) {
   const g = new THREE.Group();
-  const offsets = [[0, 0], [3.4, 1.6], [-2.8, 2.4], [1.2, -3.2]];
-  const n = 3 + (seed % 2); // 3 or 4 trees per stand
+  const offsets = [[0, 0], [3.4, 1.6], [-2.8, 2.4], [1.2, -3.2], [-3.6, -1.8], [3.2, -2.6]];
+  const n = 4 + (seed % 3); // 4-6 trees per stand — denser forest cover than the old 3-4
   for (let i = 0; i < n; i++) {
     const [ox, oz] = offsets[i];
     const jitterX = ((seed * 13 + i * 7) % 5) - 2;
