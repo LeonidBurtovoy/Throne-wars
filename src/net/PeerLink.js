@@ -3,31 +3,19 @@
 // between two browsers, found via a short human-typeable room code instead
 // of PeerJS's long default peer IDs. PeerJS's free public broker is only
 // used to help the two browsers find each other; once connected, game data
-// normally flows peer-to-peer, not through any server of ours — except
-// PeerJS's default ICE config is STUN-only (no TURN relay fallback), which
-// only ever works when both peers can reach each other directly. Whenever
-// either side is behind a NAT/firewall that direct traversal can't punch
-// through (common: different ISPs, mobile networks, restrictive routers),
-// the connection just hangs forever with no error on either side — this
-// was confirmed with two real headless-browser instances (a first for
-// this project; previously there was no way to test the actual WebRTC
-// handshake at all, only reason about the code by inspection). Explicit
-// TURN servers (a free public relay, so traffic routes through a third
-// party when direct P2P isn't possible) fix that failure mode. Can't
-// fully verify from this sandboxed environment whether these specific
-// public TURN servers stay reachable/available long-term — if connecting
-// still fails after this, that's the next thing to check.
-const ICE_CONFIG = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun.relay.metered.ca:80' },
-    { urls: 'turn:global.relay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-    { urls: 'turn:global.relay.metered.ca:80?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
-    { urls: 'turn:global.relay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
-    { urls: 'turns:global.relay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
-  ],
-};
-
+// flows peer-to-peer, not through any server of ours.
+//
+// Do NOT pass a custom `config`/`iceServers` option to `new Peer(...)` — it
+// REPLACES PeerJS's default ICE config entirely rather than adding to it.
+// A previous round of this file did exactly that (added a public TURN
+// relay, believing PeerJS's default was STUN-only) and made connectivity
+// *worse*: instrumenting the real RTCPeerConnection objects the two sides
+// created (see .devtools/ice-test.js) showed PeerJS's own default already
+// includes a working TURN relay (turn:eu-0.turn.peerjs.com / us-0, valid
+// built-in credentials) alongside Google's STUN server - while the
+// substituted public relay (openrelay via metered.ca) returned DNS lookup
+// failures and TURN-allocate 400 errors in that same test, i.e. was
+// actively broken. Findings/method fully written up in CLAUDE.md.
 const ROOM_PREFIX = 'throne-wars-';
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no ambiguous 0/O/1/I
 // without this, a connection that never opens (see the ICE_CONFIG comment
@@ -46,7 +34,7 @@ export function hostRoom({ onStatus } = {}) {
     let settled = false;
     function attempt(triesLeft) {
       const code = randomCode();
-      const peer = new Peer(ROOM_PREFIX + code, { debug: 0, config: ICE_CONFIG });
+      const peer = new Peer(ROOM_PREFIX + code, { debug: 0 });
       peer.on('open', () => {
         onStatus?.(`Комната создана: ${code}. Ждём соперника…`);
         const timer = setTimeout(() => {
@@ -78,7 +66,7 @@ export function hostRoom({ onStatus } = {}) {
 export function joinRoom(code, { onStatus } = {}) {
   return new Promise((resolve, reject) => {
     let settled = false;
-    const peer = new Peer(undefined, { debug: 0, config: ICE_CONFIG });
+    const peer = new Peer(undefined, { debug: 0 });
     peer.on('open', () => {
       onStatus?.('Подключаемся…');
       const conn = peer.connect(ROOM_PREFIX + code.trim().toUpperCase(), { reliable: true });

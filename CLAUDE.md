@@ -45,35 +45,56 @@ angles.
 
 `.devtools/net-test.js` drives two independent headless Chrome contexts
 (`browser.newContext()` twice) through the real host/join UI flow with
-real PeerJS/WebRTC — not mocked. Previously the only guidance here was
-"can't test this, need two real devices"; that's no longer true. Usage:
-`node net-test.js` (reads `GAME_URL` env var, defaults to
-`http://127.0.0.1:8099/index.html`). It prints the room code, whether
-each side reached `#game-screen`, any `#boot-error` text, console/
-pageerror logs, and saves `/tmp/net_host.png` / `/tmp/net_guest.png`.
+real PeerJS/WebRTC — not mocked. `.devtools/ice-test.js` goes one level
+deeper: it monkey-patches `window.RTCPeerConnection` via `page.addInitScript`
+*before* PeerJS's own script runs, so every actual `RTCPeerConnection` PeerJS
+creates gets logged at the ICE level (candidate types found - host/srflx/
+relay, `icecandidateerror` events with real STUN/TURN error codes, gathering/
+connection state transitions). Previously the only guidance here was "can't
+test this, need two real devices"; that's no longer true, and ice-test.js in
+particular answers *why* a connection isn't opening, not just *whether*.
 
-This caught a real bug 2026-08-17: `PeerLink.js`'s `new Peer(...)` calls
-had no `config`/`iceServers` option, so PeerJS fell back to its STUN-only
-default (no TURN relay). Whenever direct NAT traversal isn't possible
-(different ISPs, mobile networks, restrictive routers - a common case,
-not an edge case), the WebRTC data channel never opens on EITHER side,
-with no error event firing at all - both host and guest just hang on
-"Ждём соперника…"/"Подключаемся…" forever. Fixed by adding a public TURN
-server (openrelay via metered.ca) alongside STUN, plus a 25s connection
-timeout that now rejects with a clear error instead of hanging silently
-forever regardless of the cause.
+Round 1 (2026-08-17) added a custom `config: { iceServers: [...] }` to
+`new Peer(...)` (a public TURN relay, openrelay via metered.ca), believing
+PeerJS's default was STUN-only. **This was wrong and made things worse.**
+Round 2 (2026-08-18, after the user reported it still wasn't working)
+used ice-test.js to actually inspect the RTCPeerConnection config PeerJS
+was constructing, and found: passing `config` to `new Peer(...)` *replaces*
+PeerJS's default entirely rather than merging with it. PeerJS's real
+default already includes a working TURN relay (`turn:eu-0.turn.peerjs.com`
+/ `turn:us-0.turn.peerjs.com`, valid built-in credentials) alongside Google
+STUN - confirmed by literally diffing the RTCPeerConnection config with and
+without the override. The substituted metered.ca relay, meanwhile, was
+actively broken from this test environment: DNS lookup failures
+(`icecandidateerror` code 701) and `400` TURN-allocate errors on the rare
+lookup that did resolve. **Fix: removed the custom `config` entirely** -
+`PeerLink.js` now trusts PeerJS's own default, which is demonstrably better
+configured than the hand-rolled replacement was. Lesson: verify an
+assumption about a third-party library's defaults (e.g. by inspecting what
+it actually constructs, like ice-test.js does) before "fixing" it -
+guessing led directly to a regression here.
 
-Caveat: this sandboxed environment's own network did NOT successfully
-complete a real WebRTC connection even after adding TURN (confirmed via
-two-browser test, host eventually hit the new 25s timeout and showed the
-error message correctly - so the timeout/error-UX fix is verified, but
-end-to-end connectivity isn't). Inconclusive whether that reflects a
-genuine remaining bug or just this sandbox's own restricted outbound
-UDP/WebRTC traffic (DNS to the TURN host resolves fine directly against
-8.8.8.8; a plain curl through the sandbox's default resolver hung). If a
-future report says multiplayer still doesn't connect after this fix,
-re-run net-test.js first — a real error message reaching the UI (not a
-silent hang) narrows it down a lot faster than reading the code again.
+The 25s connection timeout (added round 1, kept) is still worth having
+regardless of ICE config: without it, a connection that doesn't open hangs
+"Ждём соперника…"/"Подключаемся…" forever with zero feedback either way.
+
+Residual caveat, unchanged by the round-2 fix: this specific sandboxed test
+environment cannot complete a real end-to-end WebRTC connection no matter
+which ICE servers are configured - `ice-test.js` shows both peers
+successfully getting real `srflx` (STUN-reflexive, i.e. actual public IP)
+candidates from Google's STUN server, so basic UDP STUN traffic does get
+out and back, but `iceConnectionState` never advances past `checking` in
+the observation window, and separately, DNS lookups for *both*
+`turn.peerjs.com` and `metered.ca` fail from inside this environment even
+though the same hostnames resolve fine when queried directly against
+8.8.8.8 from a plain shell command. That combination (STUN works, TURN
+hostnames won't resolve, peer connectivity checks stall) points at this
+sandbox's own DNS/UDP setup, not at the application code - but it does mean
+true end-to-end multiplayer connectivity has never actually been verified
+working from here, on either round of this fix. If a future report says it
+*still* doesn't connect: re-run `ice-test.js` first. A real
+`icecandidateerror`/state-transition trail (not a silent hang) narrows the
+next step down a lot faster than reading PeerLink.js again from scratch.
 
 ## Real modeled assets (Kenney Castle Kit) — started 2026-08-17
 
