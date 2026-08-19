@@ -673,7 +673,7 @@ export class Renderer3D {
         if (!fog.isExplored(tx, ty)) continue;
         const type = map.getTile(tx, ty);
         const key = tx + ',' + ty;
-        const isStump = type === TILE_TYPE.GRASS && map.stumps.has(key);
+        const isStump = type === TILE_TYPE.GRASS && !!map.stumps && map.stumps.has(key);
         if (!RESOURCE_TILE_TYPES.has(type) && !isStump) continue;
         const propKind = isStump ? 'stump' : type;
         let entry = this._resourceMeshes.get(key);
