@@ -20,6 +20,8 @@ import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { SSAOPass } from 'three/addons/postprocessing/SSAOPass.js';
+import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { createUnitModel, createBuildingModel, createTreeModel, createGoldNodeModel, createSteelNodeModel, createCarryProp, createGrassTuft, createRockDetail, box } from './models.js';
 import { FACTIONS } from '../data/factions.js';
@@ -82,21 +84,24 @@ export class Renderer3D {
     this.renderer.toneMappingExposure = 1.75;
 
     this.scene = new THREE.Scene();
-    // a warm late-afternoon sky instead of the previous neutral midday
-    // blue — closer to the golden-hour reference look requested, and
-    // pairs with the warmer/lower sun below instead of fighting it
-    const SKY = '#9db8d6';
-    this.scene.background = new THREE.Color(SKY);
-    // atmospheric depth: distant terrain fades toward the sky color instead
-    // of every tile reading at full contrast regardless of distance —
-    // pushed further out so it only affects the far edge of view, not most
-    // of it. MUST match the background/SKY color, not an unrelated warm
+    // a vertical gradient sky (deeper blue overhead fading to a warm pale
+    // horizon) instead of one flat color — the flat fill was a big part of
+    // why the scene read as "flat/cheap" next to any real reference. A
+    // Texture assigned to scene.background renders as a fixed 2D backdrop
+    // (not mapped to 3D directions), which is exactly right here since this
+    // camera never rotates.
+    const SKY_HORIZON = '#dcc9a3';
+    this.scene.background = this._makeSkyGradient('#6f93c4', SKY_HORIZON);
+    // atmospheric depth: distant terrain fades toward the sky's horizon
+    // color instead of every tile reading at full contrast regardless of
+    // distance — pushed further out so it only affects the far edge of
+    // view, not most of it. MUST match the background, not an unrelated
     // tone — a mismatched fog color washes every distant surface (water,
     // unexplored fog-of-war black) toward that color, which read as a
     // muddy reddish haze during an actual visual check rather than the
     // intended warm-light atmosphere (achieved instead via the sun/
     // hemisphere below, which don't have this blending problem).
-    this.scene.fog = new THREE.Fog(SKY, 1500, 3600);
+    this.scene.fog = new THREE.Fog(SKY_HORIZON, 1500, 3600);
 
     // world-units-per-pixel MUST match on both axes (matching the old 2D
     // camera's plain 1:1 mapping), or the whole scene reads as visibly
@@ -157,16 +162,29 @@ export class Renderer3D {
     this.scene.add(fill.target);
     this.fill = fill;
 
-    // bloom via a real post-processing pass — a small glow around bright
-    // highlights (embers, metal specular, sunlit edges) is the single
-    // biggest "cinematic" cue the flat direct-render was missing. Kept
-    // subtle (moderate threshold, low strength) so it reads as atmosphere
-    // rather than a glowing haze over the whole scene.
+    // post-processing chain. Routing through EffectComposer means the
+    // renderer's own `antialias: true` no longer applies (that only
+    // antialiases a direct-to-canvas render, not an offscreen composer
+    // target) — SMAAPass at the end replaces it, so this isn't a net loss.
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
+    // ambient occlusion: darkens creases/contact points between objects and
+    // the ground — the single biggest lever for "grounded, real-feeling
+    // scene" instead of flat cutouts floating over terrain. Kept subtle
+    // (small radius, moderate intensity) so it reads as soft contact
+    // shadow, not a grimy outline around every shape.
+    const ssaoPass = new SSAOPass(this.scene, this.camera, viewportWidth, viewportHeight);
+    ssaoPass.kernelRadius = 10;
+    ssaoPass.minDistance = 0.0005;
+    ssaoPass.maxDistance = 0.06;
+    this.composer.addPass(ssaoPass);
+    // bloom: a small glow around bright highlights (embers, metal specular,
+    // sunlit edges) — kept subtle (moderate threshold, low strength) so it
+    // reads as atmosphere rather than a glowing haze over the whole scene.
     this._bloomPass = new UnrealBloomPass(new THREE.Vector2(viewportWidth, viewportHeight), 0.35, 0.4, 0.85);
     this.composer.addPass(this._bloomPass);
     this.composer.addPass(new OutputPass());
+    this.composer.addPass(new SMAAPass(viewportWidth * this.renderer.getPixelRatio(), viewportHeight * this.renderer.getPixelRatio()));
 
     this._raycaster = new THREE.Raycaster();
     this._groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -183,6 +201,24 @@ export class Renderer3D {
     this._effectMeshes = [];
     this._placementGhost = null;
     this._resourceAmountLabel = null;
+  }
+
+  // a small vertical-gradient canvas used as the scene background — called
+  // once from the constructor (not lazily, unlike the grain textures below)
+  // since a real Renderer3D is only ever constructed inside an actual
+  // browser, never touched by the headless logic-test suite
+  _makeSkyGradient(topColor, bottomColor) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 2; canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+    const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    grad.addColorStop(0, topColor);
+    grad.addColorStop(1, bottomColor);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
   }
 
   // ---------------- input: screen pixel -> world (x,y) via raycasting ----------------
