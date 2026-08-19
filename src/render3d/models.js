@@ -1179,6 +1179,37 @@ export function createTreeModel(seed = 0) {
   return g;
 }
 
+// what's left after a forest tile is fully chopped out — a cut stump with
+// a lighter cross-cut top face and a couple of loose wood chips at the
+// base, instead of the tile just going empty. Placed by Renderer3D once
+// TileMap.consumeResource marks a tile in `map.stumps`.
+export function createStumpModel(seed = 0) {
+  const g = new THREE.Group();
+  const h = 2.2 + (seed % 3) * 0.3;
+  const r = 2.2 + (seed % 2) * 0.3;
+  const trunk = cyl(r, r * 1.15, h, WOOD, 8);
+  trunk.position.y = h / 2;
+  g.add(trunk);
+  const top = new THREE.Mesh(new THREE.CircleGeometry(r, 8), stdMat(WOOD_LIGHT, { roughness: 0.9 }));
+  top.rotation.x = -Math.PI / 2;
+  top.position.y = h + 0.03;
+  g.add(top);
+  // a couple of faint growth-ring grooves on the cut face
+  for (let i = 1; i <= 2; i++) {
+    const ring = new THREE.Mesh(new THREE.RingGeometry(r * (i / 3), r * (i / 3) + 0.15, 10), new THREE.MeshBasicMaterial({ color: '#5a3e22', transparent: true, opacity: 0.4 }));
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = h + 0.05;
+    g.add(ring);
+  }
+  for (const [cx, cz] of [[r + 0.6, 1.4], [-r - 0.4, -1.6]]) {
+    const chip = box(1.2, 0.4, 0.9, WOOD_LIGHT);
+    chip.position.set(cx, 0.2, cz);
+    chip.rotation.y = (seed + cx) * 0.6;
+    g.add(chip);
+  }
+  return g;
+}
+
 // ore embedded in a rock outcrop, sitting low to the ground, instead of
 // floating gem crystals — irregular nugget lumps pressed into the stone
 function oreOutcrop(rockColor, nuggetColor, glowColor, nuggetGeo) {
@@ -1205,8 +1236,49 @@ function oreOutcrop(rockColor, nuggetColor, glowColor, nuggetGeo) {
   return g;
 }
 
-export function createGoldNodeModel() {
-  return oreOutcrop('#4a4034', '#d8b23a', '#fbe28a', (r) => new THREE.IcosahedronGeometry(r, 0));
+// a single natural boulder cluster with one continuous gold vein running
+// across its face, instead of separate round nuggets scattered on top —
+// reads as ore embedded IN the rock, not treasure sitting beside it
+export function createGoldNodeModel(seed = 0) {
+  const g = new THREE.Group();
+  const rockMat = new THREE.MeshStandardMaterial({ color: '#4a4034', flatShading: true, roughness: 0.95 });
+  const rock = new THREE.Mesh(new THREE.IcosahedronGeometry(5.6, 1), rockMat);
+  rock.scale.set(1.25, 0.58, 1.1);
+  rock.position.y = 2.6;
+  rock.rotation.y = seed * 0.7;
+  rock.castShadow = true; rock.receiveShadow = true;
+  g.add(rock);
+  // a second, smaller overlapping boulder — one cohesive irregular
+  // formation rather than a single symmetrical rock
+  const rock2 = new THREE.Mesh(new THREE.IcosahedronGeometry(3.2, 1), new THREE.MeshStandardMaterial({ color: '#443a2e', flatShading: true, roughness: 0.95 }));
+  rock2.scale.set(1.1, 0.5, 0.95);
+  rock2.position.set(3.6, 1.9, -2.2);
+  rock2.rotation.y = seed * 1.4 + 1;
+  rock2.castShadow = true; rock2.receiveShadow = true;
+  g.add(rock2);
+  // the vein: a run of flattened, overlapping gold plates tracing one
+  // continuous diagonal seam across the rock's surface
+  // y values sit above the rock's actual surface height at each (x,z) —
+  // the rock is an ellipsoid-ish icosahedron (Xr=7, Yr=3.25, Zr=6.16,
+  // center y=2.6), so a plate needs y > 2.6 + 3.25*sqrt(1-(x/7)^2-(z/6.16)^2)
+  // to actually poke through instead of being buried inside the mesh (the
+  // bug in the first version of this model — a real screenshot caught it,
+  // pure geometry math alone didn't make the problem obvious)
+  const veinMat = new THREE.MeshStandardMaterial({ color: '#d8b23a', roughness: 0.35, metalness: 0.7 });
+  const veinPoints = [[-4.2, 5.5, 2.2], [-1.8, 6.2, 1.1], [0.8, 6.5, -0.4], [3.2, 5.8, -1.8]];
+  for (let i = 0; i < veinPoints.length; i++) {
+    const [vx, vy, vz] = veinPoints[i];
+    const plate = new THREE.Mesh(new THREE.OctahedronGeometry(1.6 + (i % 2) * 0.4, 0), veinMat);
+    plate.scale.set(1.7, 0.4, 1.2);
+    plate.position.set(vx, vy, vz);
+    plate.rotation.y = i * 0.8 + seed;
+    plate.castShadow = true;
+    g.add(plate);
+  }
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(0.75, 6, 6), new THREE.MeshBasicMaterial({ color: '#fbe28a' }));
+  glow.position.set(0.2, 6.6, -0.1);
+  g.add(glow);
+  return g;
 }
 
 export function createSteelNodeModel() {

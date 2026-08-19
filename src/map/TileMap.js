@@ -7,6 +7,7 @@ export class TileMap {
     this.tiles = tiles; // Uint8Array length width*height
     this.resourceAmount = new Map(); // "x,y" -> remaining amount (forest/gold)
     this.buildingOccupancy = new Set(); // "x,y" occupied by a building footprint
+    this.stumps = new Set(); // "x,y" of fully chopped forest tiles — left as a visible stump
 
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
@@ -71,7 +72,7 @@ export class TileMap {
     if (remaining <= 0) {
       this.resourceAmount.delete(key);
       const type = this.getTile(tx, ty);
-      if (type === TILE_TYPE.FOREST) this.setTile(tx, ty, TILE_TYPE.GRASS);
+      if (type === TILE_TYPE.FOREST) { this.setTile(tx, ty, TILE_TYPE.GRASS); this.stumps.add(key); }
       return 0;
     }
     this.resourceAmount.set(key, remaining);

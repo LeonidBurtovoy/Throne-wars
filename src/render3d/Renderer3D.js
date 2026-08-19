@@ -23,17 +23,23 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { SSAOPass } from 'three/addons/postprocessing/SSAOPass.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { createUnitModel, createBuildingModel, createTreeModel, createGoldNodeModel, createSteelNodeModel, createCarryProp, createGrassTuft, createRockDetail, box } from './models.js';
+import { createUnitModel, createBuildingModel, createTreeModel, createGoldNodeModel, createSteelNodeModel, createStumpModel, createCarryProp, createGrassTuft, createRockDetail, box } from './models.js';
 import { FACTIONS } from '../data/factions.js';
 import { TILE_TYPE } from '../config.js';
 
+// forest/gold/steel deliberately share plain grass's color — the resource
+// prop sitting on top (tree stand / gold vein / ore outcrop) is what marks
+// the tile now, not a differently-colored patch of ground underneath it
+// (that used to read as a flat grey/brown square, distinct from the actual
+// gold-node model painted on top of it).
+const GRASS_COLOR = '#2f5c28';
 const TERRAIN_COLOR = {
-  0: '#2f5c28', // grass
-  1: '#1d481f', // forest (tree-stand props sit on top, see _syncResourceProps)
+  0: GRASS_COLOR, // grass
+  1: GRASS_COLOR, // forest (tree-stand props sit on top, see _syncResourceProps)
   2: '#1c4f8c', // water
   3: '#544c3e', // rock
-  4: '#4a4034', // gold (ore-outcrop prop sits on top)
-  5: '#33363e', // steel (ore-outcrop prop sits on top)
+  4: GRASS_COLOR, // gold (ore-outcrop prop sits on top)
+  5: GRASS_COLOR, // steel (ore-outcrop prop sits on top)
 };
 const RESOURCE_TILE_TYPES = new Set([1, 4, 5]); // forest, gold, steel
 const MOVING_STATES = new Set(['moving', 'attack-move', 'moving-to-gather', 'moving-to-build', 'returning-to-drop', 'moving-to-haul-pickup', 'hauling-deliver']);
@@ -654,10 +660,11 @@ export class Renderer3D {
     }
   }
 
-  // forest/gold/steel tiles get a real prop on top of the colored ground
-  // (a small tree stand or an ore outcrop) instead of just a flat color —
-  // rebuilt whenever a tile's resource type changes (e.g. a chopped-down
-  // forest tile reverting to grass removes its tree stand)
+  // forest/gold/steel tiles get a real prop on top of the (now plain-grass-
+  // colored, see TERRAIN_COLOR) ground — a tree stand, gold vein or ore
+  // outcrop — rebuilt whenever a tile's resource type changes. A fully
+  // chopped forest tile reverts to grass but keeps a visible stump (see
+  // TileMap.consumeResource / map.stumps) instead of just going empty.
   _syncResourceProps(game) {
     const map = game.map, fog = game.fog, TILE = game.tileSize;
     const seen = new Set();
@@ -665,21 +672,26 @@ export class Renderer3D {
       for (let tx = 0; tx < map.width; tx++) {
         if (!fog.isExplored(tx, ty)) continue;
         const type = map.getTile(tx, ty);
-        if (!RESOURCE_TILE_TYPES.has(type)) continue;
         const key = tx + ',' + ty;
+        const isStump = type === TILE_TYPE.GRASS && map.stumps.has(key);
+        if (!RESOURCE_TILE_TYPES.has(type) && !isStump) continue;
+        const propKind = isStump ? 'stump' : type;
         let entry = this._resourceMeshes.get(key);
-        if (entry && entry.type !== type) {
+        if (entry && entry.type !== propKind) {
           this.scene.remove(entry.model);
           this._resourceMeshes.delete(key);
           entry = null;
         }
         if (!entry) {
           const seed = tx * 7 + ty * 13;
-          const model = type === 1 ? createTreeModel(seed) : type === 4 ? createGoldNodeModel() : createSteelNodeModel();
-          model.scale.setScalar(RESOURCE_SCALE);
+          const model = isStump ? createStumpModel(seed)
+            : type === 1 ? createTreeModel(seed)
+            : type === 4 ? createGoldNodeModel(seed)
+            : createSteelNodeModel();
+          model.scale.setScalar(isStump ? RESOURCE_SCALE * 0.6 : RESOURCE_SCALE);
           model.position.set(tx * TILE + TILE / 2, 0, ty * TILE + TILE / 2);
           this.scene.add(model);
-          entry = { model, type };
+          entry = { model, type: propKind };
           this._resourceMeshes.set(key, entry);
         }
         seen.add(key);
